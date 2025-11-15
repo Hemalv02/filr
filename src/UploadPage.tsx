@@ -3,9 +3,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Settings, AlertCircle, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { processDocuments, type ExtractedData } from "./lib/gemini";
+import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynamicExtraction";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
+import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
@@ -26,29 +28,70 @@ interface UploadPageProps {
   onProcessComplete: (data: ExtractedData) => void;
   onProcessStart: () => void;
   onProgressCallback: (callback: (event: ProgressEvent) => void) => void;
+  detectedFormData?: FormData | null;
+  detectedSourceDocuments?: SourceDocumentList | null;
 }
 
-export default function UploadPage({ documents, setDocuments, onClearAll, onBack, onSettings, onProcessComplete, onProcessStart, onProgressCallback }: UploadPageProps) {
+export default function UploadPage({ documents, setDocuments, onClearAll, onBack, onSettings, onProcessComplete, onProcessStart, onProgressCallback, detectedFormData, detectedSourceDocuments }: UploadPageProps) {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [processingError, setProcessingError] = useState<string>("");
+  const [dynamicDocuments, setDynamicDocuments] = useState<DocumentUpload[]>([]);
+
+  // Convert detected source documents to DocumentUpload format
+  useEffect(() => {
+    if (detectedSourceDocuments && detectedSourceDocuments.source_documents.length > 0) {
+      const converted = detectedSourceDocuments.source_documents.map((doc) => ({
+        type: doc.file_id as DocumentType,
+        file: null,
+        required: false, // Make all documents optional
+        label: doc.document_name_bangla,
+        description: doc.notes || doc.necessity,
+      }));
+      setDynamicDocuments(converted);
+    }
+  }, [detectedSourceDocuments]);
+
+  const displayDocuments = dynamicDocuments.length > 0 ? dynamicDocuments : documents;
 
   const handleFileSelect = (type: DocumentType, file: File | null) => {
-    setDocuments(
-      documents.map((doc) =>
-        doc.type === type ? { ...doc, file } : doc
-      )
-    );
+    if (dynamicDocuments.length > 0) {
+      // Update dynamic documents state
+      setDynamicDocuments(
+        dynamicDocuments.map((doc) =>
+          doc.type === type ? { ...doc, file } : doc
+        )
+      );
+    } else {
+      // Update static documents state
+      setDocuments(
+        documents.map((doc) =>
+          doc.type === type ? { ...doc, file } : doc
+        )
+      );
+    }
     setTouched({ ...touched, [type]: true });
     if (file) {
       setErrors({ ...errors, [type]: "" });
     }
+
+    // Debug log
+    console.log('File selected:', { type, fileName: file?.name, hasDynamic: dynamicDocuments.length > 0 });
   };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    documents
+
+    // Check if at least one document is uploaded
+    const hasAnyDocument = displayDocuments.some((doc) => doc.file !== null);
+    if (!hasAnyDocument) {
+      setProcessingError("Please upload at least one document to continue");
+      return false;
+    }
+
+    // Check required documents (if any)
+    displayDocuments
       .filter((doc) => doc.required)
       .forEach((doc) => {
         if (!doc.file) {
@@ -61,7 +104,7 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
 
   const handleSubmit = async () => {
     const allTouched: Record<string, boolean> = {};
-    documents.forEach((doc) => {
+    displayDocuments.forEach((doc) => {
       allTouched[doc.type] = true;
     });
     setTouched(allTouched);
@@ -86,9 +129,15 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
       onProcessStart();
 
       // Get all uploaded files
-      const uploadedFiles = documents
+      const uploadedFiles = displayDocuments
         .filter((doc) => doc.file !== null)
         .map((doc) => doc.file!);
+
+      console.log('=== UPLOAD DEBUG ===');
+      console.log('Display documents:', displayDocuments);
+      console.log('Uploaded files count:', uploadedFiles.length);
+      console.log('Uploaded files:', uploadedFiles.map(f => f.name));
+      console.log('Has detected form data:', !!detectedFormData);
 
       // Set up progress callback
       onProgressCallback((event: ProgressEvent) => {
@@ -98,21 +147,52 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
         }
       });
 
-      // Process documents with Gemini
-      const extractedData = await processDocuments(
-        uploadedFiles,
-        apiKey,
-        model || "Gemini 2.0 Flash",
-        (event) => {
-          // Forward progress events
-          if ((window as any).__progressHandler) {
-            (window as any).__progressHandler(event);
+      // Process documents with Gemini - use dynamic extraction if form data is available
+      let extractedData: ExtractedData | DynamicExtractedData;
+
+      if (detectedFormData) {
+        // Use dynamic extraction based on detected form fields
+        extractedData = await processDynamicDocuments(
+          uploadedFiles,
+          detectedFormData,
+          apiKey,
+          model || "gemini-2.5-flash",
+          (event) => {
+            // Convert dynamic progress to standard progress format
+            if ((window as any).__progressHandler) {
+              const status = event.stage === "upload" ? "uploading" as const :
+                            event.stage === "extract" ? "processing" as const :
+                            event.stage === "error" ? "error" as const :
+                            "completed" as const;
+
+              (window as any).__progressHandler({
+                fileName: event.documentName,
+                status,
+                current: event.currentDocument,
+                total: event.totalDocuments,
+                message: event.message,
+                error: event.stage === "error" ? event.message : undefined,
+              });
+            }
           }
-        }
-      );
+        );
+      } else {
+        // Use static extraction for backwards compatibility
+        extractedData = await processDocuments(
+          uploadedFiles,
+          apiKey,
+          model || "Gemini 2.0 Flash",
+          (event) => {
+            // Forward progress events
+            if ((window as any).__progressHandler) {
+              (window as any).__progressHandler(event);
+            }
+          }
+        );
+      }
 
       // Show results
-      onProcessComplete(extractedData);
+      onProcessComplete(extractedData as ExtractedData);
     } catch (error) {
       console.error("Processing error:", error);
       setProcessingError(
@@ -160,7 +240,7 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
             </div>
           )}
 
-          {documents.map((doc) => (
+          {displayDocuments.map((doc) => (
             <div key={doc.type} className="space-y-2">
               <Label htmlFor={`file-${doc.type}`}>
                 {doc.label}
@@ -179,7 +259,9 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
               {touched[doc.type] && errors[doc.type] && (
                 <p className="text-sm text-destructive">{errors[doc.type]}</p>
               )}
-              <p className="text-xs text-muted-foreground">{doc.description}</p>
+              {doc.file && (
+                <p className="text-xs text-green-600">✓ {doc.file.name}</p>
+              )}
             </div>
           ))}
         </div>
@@ -187,7 +269,10 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
 
       {/* Fixed Submit Button */}
       <div className="flex-shrink-0 p-6 pt-4 border-t bg-background">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto space-y-2">
+          <div className="text-center text-sm text-muted-foreground">
+            {displayDocuments.filter(doc => doc.file).length} / {displayDocuments.length} documents uploaded
+          </div>
           <Button onClick={handleSubmit} className="w-full" size="lg">
             Process Documents
           </Button>

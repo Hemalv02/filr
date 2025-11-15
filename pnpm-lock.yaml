@@ -65,6 +65,9 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.24.1
+      zod-to-json-schema:
+        specifier: ^3.24.6
+        version: 3.24.6(zod@3.24.1)
     devDependencies:
       '@types/react':
         specifier: ^19.1.12
@@ -2767,6 +2770,11 @@ packages:
   zip-dir@2.0.0:
     resolution: {integrity: sha512-uhlsJZWz26FLYXOD6WVuq+fIcZ3aBPGo/cFdiLlv3KNwpa52IF3ISV8fLhQLiqVu5No3VhlqlgthN6gehil1Dg==}
 
+  zod-to-json-schema@3.24.6:
+    resolution: {integrity: sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg==}
+    peerDependencies:
+      zod: ^3.24.1
+
   zod@3.24.1:
     resolution: {integrity: sha512-muH7gBL9sI1nciMZV67X5fTKKBLtwpZ5VBp1vsOQzj1MhrBZ4wlVCm3gedKZWLp0Oyel8sIGfeiz54Su+OVT+A==}
 
@@ -5388,6 +5396,10 @@ snapshots:
     dependencies:
       async: 3.2.6
       jszip: 3.10.1
+
+  zod-to-json-schema@3.24.6(zod@3.24.1):
+    dependencies:
+      zod: 3.24.1
 
   zod@3.24.1: {}
 

@@ -1,13 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText } from "lucide-react";
+import { FileText, Settings } from "lucide-react";
 import { useState, useRef } from "react";
 import UploadPage from "./UploadPage";
 import SettingsPage from "./SettingsPage";
 import ProcessingScreen from "./ProcessingScreen";
 import ResultsPage from "./ResultsPage";
+import HTMLSourcePage from "./HTMLSourcePage";
+import FormDetectionPage from "./FormDetectionPage";
+import DebugPage from "./DebugPage";
 import type { ExtractedData } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
+import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
@@ -20,8 +24,10 @@ interface DocumentUpload {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"home" | "upload" | "settings" | "loading" | "results">("home");
+  const [currentPage, setCurrentPage] = useState<"home" | "upload" | "settings" | "loading" | "results" | "htmlsource" | "formdetection" | "debug">("home");
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
+  const [detectedFormData, setDetectedFormData] = useState<FormData | null>(null);
+  const [detectedSourceDocuments, setDetectedSourceDocuments] = useState<SourceDocumentList | null>(null);
   const progressCallbackRef = useRef<((event: ProgressEvent) => void) | null>(null);
   const [documents, setDocuments] = useState<DocumentUpload[]>([
     {
@@ -76,13 +82,32 @@ export default function App() {
     progressCallbackRef.current = callback;
   };
 
+  const handleGetStarted = () => {
+    // Check if API key exists
+    const apiKey = localStorage.getItem("gemini_api_key");
+
+    if (!apiKey) {
+      alert("Please set your Gemini API key in settings first!");
+      setCurrentPage("settings");
+      return;
+    }
+
+    // Navigate to form detection page
+    setCurrentPage("formdetection");
+  };
+
   if (currentPage === "upload") {
     return (
       <UploadPage
         documents={documents}
         setDocuments={setDocuments}
         onClearAll={clearAllDocuments}
-        onBack={() => setCurrentPage("home")}
+        onBack={() => {
+          // Clear form data when going back
+          setDetectedFormData(null);
+          setDetectedSourceDocuments(null);
+          setCurrentPage("home");
+        }}
         onSettings={() => setCurrentPage("settings")}
         onProcessStart={() => setCurrentPage("loading")}
         onProcessComplete={(data) => {
@@ -90,12 +115,14 @@ export default function App() {
           setCurrentPage("results");
         }}
         onProgressCallback={handleProgressCallback}
+        detectedFormData={detectedFormData}
+        detectedSourceDocuments={detectedSourceDocuments}
       />
     );
   }
 
   if (currentPage === "settings") {
-    return <SettingsPage onBack={() => setCurrentPage("upload")} />;
+    return <SettingsPage onBack={() => setCurrentPage("home")} />;
   }
 
   if (currentPage === "loading") {
@@ -118,13 +145,47 @@ export default function App() {
           setExtractedData(null);
           setCurrentPage("upload");
         }}
+        detectedFormData={detectedFormData}
+        detectedSourceDocuments={detectedSourceDocuments}
       />
     );
+  }
+
+  if (currentPage === "htmlsource") {
+    return <HTMLSourcePage onBack={() => setCurrentPage("home")} />;
+  }
+
+  if (currentPage === "formdetection") {
+    return (
+      <FormDetectionPage
+        onBack={() => setCurrentPage("home")}
+        onContinueToUpload={(formData, sourceDocuments) => {
+          setDetectedFormData(formData);
+          setDetectedSourceDocuments(sourceDocuments);
+          setCurrentPage("upload");
+        }}
+      />
+    );
+  }
+
+  if (currentPage === "debug") {
+    return <DebugPage onBack={() => setCurrentPage("home")} />;
   }
 
   return (
     <div className="h-screen w-full bg-background flex items-center justify-center p-8">
       <div className="w-full max-w-lg space-y-10 text-center">
+        {/* Settings Button */}
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setCurrentPage("settings")}
+          >
+            <Settings className="w-5 h-5" />
+          </Button>
+        </div>
+
         {/* Logo/Icon */}
         <div className="flex justify-center mb-8">
           <div className="w-28 h-28 rounded-3xl bg-foreground flex items-center justify-center shadow-sm">
@@ -144,18 +205,19 @@ export default function App() {
 
         {/* Description */}
         <p className="text-base text-muted-foreground px-4 leading-relaxed">
-          Upload your documents and let AI extract and auto-fill information for NID applications.
+          Upload your documents and let AI extract and auto-fill information for government applications.
         </p>
 
         {/* CTA Button */}
-        <div className="pt-4">
+        <div className="pt-4 space-y-3">
           <Button
-            onClick={() => setCurrentPage("upload")}
+            onClick={handleGetStarted}
             className="w-full h-14 text-base font-medium"
             size="lg"
           >
             Get Started
           </Button>
+          {/* Debug buttons hidden */}
         </div>
 
         {/* Footer */}

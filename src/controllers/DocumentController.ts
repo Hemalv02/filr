@@ -5,9 +5,14 @@
  * models and views. They contain the application's business logic.
  */
 
+/**
+ * MVC PATTERN - Controllers
+ * Controllers handle business logic and coordinate between models and views
+ */
+
 import type { ExtractedData } from "../lib/gemini";
 import type { FormData, SourceDocumentList } from "../lib/formExtraction";
-import { ProcessorChain } from "../lib/processors/ProcessorChain";
+import { ProcessorChain, type ChainOptions } from "../lib/processors/ProcessorChain";
 import { extractFormData } from "../lib/formExtraction";
 import { extractDynamicData } from "../lib/dynamicExtraction";
 import { executeAutoFill } from "../lib/formFiller";
@@ -20,20 +25,34 @@ import type {
 } from "../models/DocumentModel";
 import { ModelValidator, ModelTransformer } from "../models/DocumentModel";
 
+// SINGLETON PATTERN: Import singletons
+import { APIClientSingleton, SettingsSingleton } from "../lib/singleton/APIClientSingleton";
+
+// FACTORY PATTERN: Import factory
+import { ProcessorFactory } from "../lib/factories/ProcessorFactory";
+
 /**
- * Document processing controller
+ * MVC CONTROLLER: Document processing controller
  */
 export class DocumentController {
   /**
    * Process uploaded documents
+   * USES: Singleton, Factory, Chain of Responsibility, Decorator patterns
    */
   static async processDocuments(
     documents: DocumentUploadModel[],
     apiKey: string,
     model: string,
-    onProgress?: (event: any) => void
+    onProgress?: (event: any) => void,
+    options?: ChainOptions
   ): Promise<ProcessingResultModel> {
     const startTime = performance.now();
+
+    // MVC MODEL: Validate documents using model validator
+    const validation = this.validateDocuments(documents);
+    if (!validation.valid) {
+      throw new Error(`Document validation failed: ${validation.errors.join(", ")}`);
+    }
 
     // Filter documents that have files
     const filesToProcess = documents
@@ -44,21 +63,32 @@ export class DocumentController {
       throw new Error("No files to process");
     }
 
-    // Create optimized processor chain
-    const chain = ProcessorChain.createOptimizedForFiles(filesToProcess);
+    // SINGLETON PATTERN: Initialize API client if needed
+    const apiClient = APIClientSingleton.getInstance();
+    apiClient.initializeClient(apiKey);
 
-    // Subscribe to progress updates
+    // FACTORY PATTERN + CHAIN OF RESPONSIBILITY: Create optimized processor chain
+    const chainOptions: ChainOptions = options || {
+      enableLogging: true,
+      enableMetrics: true,
+      enableSanitization: true,
+    };
+
+    const chain = ProcessorChain.createOptimizedForFiles(filesToProcess, chainOptions);
+
+    // OBSERVER PATTERN: Subscribe to progress updates
     if (onProgress) {
       chain.subscribe({
         onProgress: onProgress,
       });
     }
 
-    // Process documents
+    // CHAIN OF RESPONSIBILITY: Process documents through the chain
     const result = await chain.processDocuments(filesToProcess, apiKey, model);
 
     const endTime = performance.now();
 
+    // MVC MODEL: Return processing result model
     return {
       data: result.data,
       errors: result.errors,
@@ -189,40 +219,48 @@ export class FormController {
 }
 
 /**
- * Settings controller
+ * MVC CONTROLLER: Settings controller
  */
 export class SettingsController {
   /**
    * Load settings from storage
+   * USES: Singleton pattern for settings management
    */
   static loadSettings(): SettingsModel {
+    // SINGLETON PATTERN: Use SettingsSingleton
+    const settingsSingleton = SettingsSingleton.getInstance();
+
     const storage = {
-      gemini_api_key: localStorage.getItem("gemini_api_key"),
-      gemini_model: localStorage.getItem("gemini_model"),
-      theme: localStorage.getItem("theme"),
+      gemini_api_key: settingsSingleton.get("gemini_api_key"),
+      gemini_model: settingsSingleton.get("gemini_model"),
+      theme: settingsSingleton.get("theme"),
     };
 
+    // MVC MODEL: Transform storage format to model
     return ModelTransformer.storageToSettings(storage);
   }
 
   /**
    * Save settings to storage
+   * USES: Singleton pattern + Model validation
    */
   static saveSettings(settings: SettingsModel): void {
-    // Validate settings
+    // MVC MODEL: Validate settings using model validator
     const validation = ModelValidator.validateSettings(settings);
     if (!validation.valid) {
       throw new Error(`Invalid settings: ${validation.errors.join(", ")}`);
     }
 
-    // Transform and save
+    // MVC MODEL: Transform model to storage format
     const storage = ModelTransformer.settingsToStorage(settings);
 
-    localStorage.setItem("gemini_api_key", storage.gemini_api_key);
-    localStorage.setItem("gemini_model", storage.gemini_model);
-    localStorage.setItem("theme", storage.theme);
+    // SINGLETON PATTERN: Save using SettingsSingleton
+    const settingsSingleton = SettingsSingleton.getInstance();
+    settingsSingleton.set("gemini_api_key", storage.gemini_api_key);
+    settingsSingleton.set("gemini_model", storage.gemini_model);
+    settingsSingleton.set("theme", storage.theme);
 
-    console.log("Settings saved successfully");
+    console.log("[MVC CONTROLLER] Settings saved successfully");
   }
 
   /**

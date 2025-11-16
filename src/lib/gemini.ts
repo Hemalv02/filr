@@ -115,17 +115,32 @@ const responseSchema = {
   ],
 };
 
+/**
+ * Process documents using Chain of Responsibility + Factory patterns
+ *
+ * PATTERN USAGE:
+ * - Chain of Responsibility: Files pass through processor chain
+ * - Factory Pattern: Processors created by factory
+ * - Observer Pattern: Progress notifications
+ * - Decorator Pattern: Optional logging/metrics
+ */
 export async function processDocuments(
   files: File[],
   apiKey: string,
   model: string,
   onProgress?: (event: any) => void
 ): Promise<ExtractedData> {
-  // Use Chain of Responsibility pattern for document processing
+  // FACTORY PATTERN + CHAIN OF RESPONSIBILITY: Use ProcessorChain
   const { ProcessorChain } = await import("./processors/ProcessorChain");
-  const chain = new ProcessorChain();
 
-  // Subscribe to progress updates if callback provided
+  // Create optimized chain for files (uses Factory pattern internally)
+  const chain = ProcessorChain.createOptimizedForFiles(files, {
+    enableLogging: true,
+    enableMetrics: false,
+    enableSanitization: true,
+  });
+
+  // OBSERVER PATTERN: Subscribe to progress updates if callback provided
   if (onProgress) {
     chain.subscribe({
       onProgress: (event) => {
@@ -134,11 +149,16 @@ export async function processDocuments(
     });
   }
 
+  // CHAIN OF RESPONSIBILITY: Process documents through the chain
   const result = await chain.processDocuments(files, apiKey, model);
 
   // Log any errors but don't throw - return partial data
   if (result.errors.length > 0) {
-    console.warn("Processing errors:", result.errors);
+    console.warn("[PATTERN] Processing errors:", result.errors);
+  }
+
+  if (result.warnings.length > 0) {
+    console.warn("[PATTERN] Processing warnings:", result.warnings);
   }
 
   return result.data;

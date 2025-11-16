@@ -9,6 +9,9 @@ import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynami
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 
+// MVC PATTERN: Import controller
+import { DocumentController } from "./controllers/DocumentController";
+
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
 interface DocumentUpload {

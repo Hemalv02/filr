@@ -15,6 +15,12 @@ export interface ProcessorConfig {
   validateFiles?: boolean;
 }
 
+/**
+ * CHAIN OF RESPONSIBILITY PATTERN
+ *
+ * Each DocumentProcessor is a handler in the chain. The chain processes
+ * files sequentially, with each processor deciding if it can handle the file.
+ */
 export abstract class DocumentProcessor {
   protected next: DocumentProcessor | null = null;
   protected notifier?: ProgressNotifier;
@@ -26,9 +32,46 @@ export abstract class DocumentProcessor {
     validateFiles: true,
   };
 
+  /**
+   * Chain of Responsibility: Link to next handler
+   * Returns the next processor for method chaining
+   */
   setNext(processor: DocumentProcessor): DocumentProcessor {
+    if (this.next !== null) {
+      console.warn(`[CHAIN] Overwriting existing next processor for ${this.constructor.name}`);
+    }
     this.next = processor;
+    console.log(`[CHAIN] ${this.constructor.name} -> ${processor.constructor.name}`);
     return processor;
+  }
+
+  /**
+   * Get the next processor in the chain (for inspection)
+   */
+  getNext(): DocumentProcessor | null {
+    return this.next;
+  }
+
+  /**
+   * Check if this is the last processor in the chain
+   */
+  isLastInChain(): boolean {
+    return this.next === null;
+  }
+
+  /**
+   * Get the full chain as string (for debugging)
+   */
+  getChainDescription(): string {
+    const chain: string[] = [this.constructor.name];
+    let current = this.next;
+
+    while (current !== null) {
+      chain.push(current.constructor.name);
+      current = current.getNext();
+    }
+
+    return chain.join(" -> ");
   }
 
   setProgressNotifier(notifier: ProgressNotifier, currentIndex: number, totalFiles: number): void {

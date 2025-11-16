@@ -1,15 +1,52 @@
 /**
- * Mediator Pattern Implementation
+ * MEDIATOR PATTERN IMPLEMENTATION
  *
  * Defines an object that encapsulates how a set of objects interact.
  * Mediator promotes loose coupling by keeping objects from referring
- * to each other explicitly.
+ * to each other explicitly, and lets you vary their interaction independently.
+ *
+ * Benefits:
+ * - Reduces coupling between components
+ * - Centralizes complex communications and control
+ * - Makes component interactions explicit and maintainable
+ * - Easier to understand component dependencies
  */
 
 import type { ExtractedData } from "../gemini";
 import type { FormData, SourceDocumentList } from "../formExtraction";
 import type { ProgressEvent } from "../observers/ProcessingObserver";
 import type { PageType } from "../models/DocumentModel";
+
+/**
+ * Event types for mediator communication
+ */
+export enum MediatorEvent {
+  // Navigation events
+  NAVIGATION_REQUEST = "navigation:request",
+  NAVIGATION_COMPLETE = "navigation:complete",
+
+  // Processing events
+  PROCESSING_START = "processing:start",
+  PROCESSING_PROGRESS = "processing:progress",
+  PROCESSING_COMPLETE = "processing:complete",
+  PROCESSING_ERROR = "processing:error",
+
+  // Form events
+  FORM_DETECTED = "form:detected",
+  FORM_FILLED = "form:filled",
+
+  // Data events
+  DATA_UPDATED = "data:updated",
+  DATA_CLEARED = "data:cleared",
+
+  // Settings events
+  SETTINGS_UPDATED = "settings:updated",
+  SETTINGS_RESET = "settings:reset",
+
+  // UI events
+  UI_NOTIFICATION = "ui:notification",
+  UI_ERROR = "ui:error",
+}
 
 /**
  * Component interface - all components that use mediator implement this
@@ -29,19 +66,69 @@ export interface Mediator {
 }
 
 /**
+ * Event listener type
+ */
+export type EventListener = (sender: string, data?: any) => void;
+
+/**
  * Concrete Mediator for Application
  */
 export class AppMediator implements Mediator {
   private components: Map<string, MediatorComponent> = new Map();
-  private eventLog: Array<{ sender: string; event: string; timestamp: number }> = [];
+  private eventLog: Array<{ sender: string; event: string; timestamp: number; data?: any }> = [];
+  private eventListeners: Map<string, EventListener[]> = new Map();
+  private maxLogSize: number = 100;
 
   /**
    * Register a component
    */
   registerComponent(name: string, component: MediatorComponent): void {
+    if (this.components.has(name)) {
+      console.warn(`[MEDIATOR] Component ${name} already registered, replacing`);
+    }
     this.components.set(name, component);
     component.setMediator(this);
     console.log(`[MEDIATOR] Registered component: ${name}`);
+  }
+
+  /**
+   * Subscribe to specific events
+   */
+  subscribe(event: string, listener: EventListener): () => void {
+    if (!this.eventListeners.has(event)) {
+      this.eventListeners.set(event, []);
+    }
+    this.eventListeners.get(event)!.push(listener);
+    console.log(`[MEDIATOR] Subscribed to event: ${event}`);
+
+    // Return unsubscribe function
+    return () => {
+      const listeners = this.eventListeners.get(event);
+      if (listeners) {
+        const index = listeners.indexOf(listener);
+        if (index > -1) {
+          listeners.splice(index, 1);
+          console.log(`[MEDIATOR] Unsubscribed from event: ${event}`);
+        }
+      }
+    };
+  }
+
+  /**
+   * Broadcast event to all listeners
+   */
+  private broadcastEvent(event: string, sender: string, data?: any): void {
+    const listeners = this.eventListeners.get(event);
+    if (listeners && listeners.length > 0) {
+      console.log(`[MEDIATOR] Broadcasting ${event} to ${listeners.length} listeners`);
+      listeners.forEach(listener => {
+        try {
+          listener(sender, data);
+        } catch (error) {
+          console.error(`[MEDIATOR] Listener error for ${event}:`, error);
+        }
+      });
+    }
   }
 
   /**
@@ -58,17 +145,47 @@ export class AppMediator implements Mediator {
   notify(sender: MediatorComponent, event: string, data?: any): void {
     const senderName = sender.getName();
 
-    // Log event
+    // Log event (with size limit)
     this.eventLog.push({
       sender: senderName,
       event,
       timestamp: Date.now(),
+      data,
     });
+
+    // Limit log size
+    if (this.eventLog.length > this.maxLogSize) {
+      this.eventLog.shift();
+    }
 
     console.log(`[MEDIATOR] Event "${event}" from ${senderName}`, data);
 
+    // Broadcast to event listeners
+    this.broadcastEvent(event, senderName, data);
+
     // Route events to appropriate handlers
     this.handleEvent(senderName, event, data);
+  }
+
+  /**
+   * Get registered components count
+   */
+  getComponentCount(): number {
+    return this.components.size;
+  }
+
+  /**
+   * Get all registered component names
+   */
+  getComponentNames(): string[] {
+    return Array.from(this.components.keys());
+  }
+
+  /**
+   * Check if component is registered
+   */
+  hasComponent(name: string): boolean {
+    return this.components.has(name);
   }
 
   /**

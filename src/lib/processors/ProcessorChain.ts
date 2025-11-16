@@ -1,40 +1,37 @@
 import { GoogleGenAI } from "@google/genai";
-import { DocumentProcessor } from "./DocumentProcessor";
-import { BirthCertificateProcessor } from "./BirthCertificateProcessor";
-import { NIDProcessor } from "./NIDProcessor";
-import { UtilityBillProcessor } from "./UtilityBillProcessor";
-import { EducationCertificateProcessor } from "./EducationCertificateProcessor";
-import { PassportProcessor } from "./PassportProcessor";
+import type { DocumentProcessor } from "./DocumentProcessor";
 import type { ExtractedData } from "../gemini";
 import { ProgressNotifier } from "../observers/ProcessingObserver";
 import type { ProcessingObserver } from "../observers/ProcessingObserver";
+import { ProcessorFactory, type ProcessorChainConfig } from "../factories/ProcessorFactory";
 
 export interface ProcessingResult {
   data: ExtractedData;
   errors: string[];
+  warnings: string[];
 }
 
+/**
+ * ProcessorChain - Orchestrates document processing using Chain of Responsibility
+ * Now uses Factory Pattern for creating processors
+ */
 export class ProcessorChain {
   private chain: DocumentProcessor;
   private notifier: ProgressNotifier;
 
-  constructor() {
-    // Build the chain of processors
-    const birthProcessor = new BirthCertificateProcessor();
-    const nidProcessor = new NIDProcessor();
-    const utilityProcessor = new UtilityBillProcessor();
-    const educationProcessor = new EducationCertificateProcessor();
-    const passportProcessor = new PassportProcessor();
-
-    // Link processors together
-    birthProcessor
-      .setNext(nidProcessor)
-      .setNext(utilityProcessor)
-      .setNext(educationProcessor)
-      .setNext(passportProcessor);
-
-    this.chain = birthProcessor;
+  constructor(config?: ProcessorChainConfig) {
+    // Use Factory Pattern to create the processor chain
+    this.chain = ProcessorFactory.createChain(config);
     this.notifier = new ProgressNotifier();
+  }
+
+  /**
+   * Create an optimized chain based on files to be processed
+   */
+  static createOptimizedForFiles(files: File[]): ProcessorChain {
+    const instance = new ProcessorChain();
+    instance.chain = ProcessorFactory.createChainForFiles(files);
+    return instance;
   }
 
   subscribe(observer: ProcessingObserver): void {
@@ -80,6 +77,7 @@ export class ProcessorChain {
     };
 
     const allErrors: string[] = [];
+    const allWarnings: string[] = [];
 
     // Process each file through the chain
     for (let i = 0; i < files.length; i++) {
@@ -91,11 +89,16 @@ export class ProcessorChain {
       const result = await this.chain.handle(file, accumulatedData, ai, model);
       accumulatedData = result.data;
       allErrors.push(...result.errors);
+      allWarnings.push(...result.warnings);
     }
+
+    // Log summary
+    console.log(`Processing complete: ${files.length} files, ${allErrors.length} errors, ${allWarnings.length} warnings`);
 
     return {
       data: accumulatedData as ExtractedData,
       errors: allErrors,
+      warnings: allWarnings,
     };
   }
 }

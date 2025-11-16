@@ -1,10 +1,18 @@
 import { GoogleGenAI, createUserContent, createPartFromUri, Type } from "@google/genai";
 import type { ExtractedData } from "../gemini";
 import type { ProgressNotifier } from "../observers/ProcessingObserver";
+import { ProcessorValidator, ErrorRecoveryStrategy } from "./ProcessorValidator";
 
 export interface ProcessorResult {
   data: Partial<ExtractedData>;
   errors: string[];
+  warnings: string[];
+}
+
+export interface ProcessorConfig {
+  maxRetries?: number;
+  retryDelay?: number;
+  validateFiles?: boolean;
 }
 
 export abstract class DocumentProcessor {
@@ -12,6 +20,11 @@ export abstract class DocumentProcessor {
   protected notifier?: ProgressNotifier;
   protected currentIndex: number = 0;
   protected totalFiles: number = 0;
+  protected config: ProcessorConfig = {
+    maxRetries: 2,
+    retryDelay: 1000,
+    validateFiles: true,
+  };
 
   setNext(processor: DocumentProcessor): DocumentProcessor {
     this.next = processor;
@@ -24,27 +37,72 @@ export abstract class DocumentProcessor {
     this.totalFiles = totalFiles;
   }
 
+  setConfig(config: Partial<ProcessorConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
+
   async handle(
     file: File,
     accumulatedData: Partial<ExtractedData>,
     ai: GoogleGenAI,
     model: string
   ): Promise<ProcessorResult> {
-    let result: ProcessorResult = { data: accumulatedData, errors: [] };
+    let result: ProcessorResult = { data: accumulatedData, errors: [], warnings: [] };
+
+    // Validate file before processing
+    if (this.config.validateFiles) {
+      const validation = ProcessorValidator.validateFile(file);
+
+      if (!validation.isValid) {
+        const validationError = `File validation failed: ${validation.errors.join(", ")}`;
+        result.errors.push(validationError);
+
+        if (this.notifier) {
+          this.notifier.notifyError(file.name, validationError, this.currentIndex, this.totalFiles);
+        }
+
+        // Continue to next processor even if validation failed
+        if (this.next) {
+          if (this.notifier) {
+            this.next.setProgressNotifier(this.notifier, this.currentIndex, this.totalFiles);
+            this.next.setConfig(this.config);
+          }
+          const nextResult = await this.next.handle(file, result.data, ai, model);
+          result.data = nextResult.data;
+          result.errors = [...result.errors, ...nextResult.errors];
+          result.warnings = [...result.warnings, ...nextResult.warnings];
+        }
+
+        return result;
+      }
+
+      // Add warnings if any
+      result.warnings.push(...validation.warnings);
+    }
 
     // Check if this processor should handle this file
     if (this.canProcess(file)) {
       try {
-        const extractedData = await this.process(file, ai, model);
+        // Process with retry logic
+        const extractedData = await ErrorRecoveryStrategy.retry(
+          async () => await this.process(file, ai, model),
+          this.config.maxRetries,
+          this.config.retryDelay
+        );
+
         result.data = { ...result.data, ...extractedData };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        result.errors.push(`Error processing ${file.name}: ${errorMessage}`);
+        const fullError = `Error processing ${file.name}: ${errorMessage}`;
+        result.errors.push(fullError);
 
         // Notify error
         if (this.notifier) {
           this.notifier.notifyError(file.name, errorMessage, this.currentIndex, this.totalFiles);
         }
+
+        // Log error for debugging
+        console.error(`[${this.constructor.name}] ${fullError}`);
       }
     }
 
@@ -52,10 +110,12 @@ export abstract class DocumentProcessor {
     if (this.next) {
       if (this.notifier) {
         this.next.setProgressNotifier(this.notifier, this.currentIndex, this.totalFiles);
+        this.next.setConfig(this.config);
       }
       const nextResult = await this.next.handle(file, result.data, ai, model);
       result.data = nextResult.data;
       result.errors = [...result.errors, ...nextResult.errors];
+      result.warnings = [...result.warnings, ...nextResult.warnings];
     }
 
     return result;

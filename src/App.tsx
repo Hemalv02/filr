@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Settings } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import UploadPage from "./UploadPage";
 import SettingsPage from "./SettingsPage";
 import ProcessingScreen from "./ProcessingScreen";
@@ -12,6 +12,7 @@ import DebugPage from "./DebugPage";
 import type { ExtractedData } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
+import { StateManager, type PageType, type StateContext } from "./lib/state/AppState";
 
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
@@ -24,10 +25,17 @@ interface DocumentUpload {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<"home" | "upload" | "settings" | "loading" | "results" | "htmlsource" | "formdetection" | "debug">("home");
-  const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
-  const [detectedFormData, setDetectedFormData] = useState<FormData | null>(null);
-  const [detectedSourceDocuments, setDetectedSourceDocuments] = useState<SourceDocumentList | null>(null);
+  // Initialize state manager with proper State pattern
+  const [stateContext, setStateContext] = useState<StateContext>({
+    currentPage: "home",
+    extractedData: null,
+    detectedFormData: null,
+    detectedSourceDocuments: null,
+    progressCallback: null,
+    error: null,
+  });
+
+  const stateManager = useMemo(() => new StateManager(stateContext), []);
   const progressCallbackRef = useRef<((event: ProgressEvent) => void) | null>(null);
   const [documents, setDocuments] = useState<DocumentUpload[]>([
     {
@@ -74,12 +82,34 @@ export default function App() {
     },
   ]);
 
+  // Sync state manager context with React state
+  useEffect(() => {
+    const context = stateManager.getContext();
+    setStateContext({ ...context });
+  }, [stateManager]);
+
+  // Helper function to transition between states
+  const transitionToPage = (targetPage: PageType): boolean => {
+    const success = stateManager.transitionTo(targetPage);
+    if (success) {
+      setStateContext({ ...stateManager.getContext() });
+    } else {
+      console.error(`Failed to transition to ${targetPage}`);
+      // If transition to settings failed, try to show error
+      if (targetPage !== "settings" && stateManager.getContext().error) {
+        alert(stateManager.getContext().error);
+      }
+    }
+    return success;
+  };
+
   const clearAllDocuments = () => {
     setDocuments(documents.map(doc => ({ ...doc, file: null })));
   };
 
   const handleProgressCallback = (callback: (event: ProgressEvent) => void) => {
     progressCallbackRef.current = callback;
+    stateManager.updateContext({ progressCallback: callback });
   };
 
   const handleGetStarted = () => {
@@ -88,13 +118,16 @@ export default function App() {
 
     if (!apiKey) {
       alert("Please set your Gemini API key in settings first!");
-      setCurrentPage("settings");
+      transitionToPage("settings");
       return;
     }
 
-    // Navigate to form detection page
-    setCurrentPage("formdetection");
+    // Navigate to form detection page using state manager
+    transitionToPage("formdetection");
   };
+
+  // Use stateContext.currentPage from state manager
+  const currentPage = stateContext.currentPage;
 
   if (currentPage === "upload") {
     return (
@@ -104,25 +137,27 @@ export default function App() {
         onClearAll={clearAllDocuments}
         onBack={() => {
           // Clear form data when going back
-          setDetectedFormData(null);
-          setDetectedSourceDocuments(null);
-          setCurrentPage("home");
+          stateManager.updateContext({
+            detectedFormData: null,
+            detectedSourceDocuments: null,
+          });
+          transitionToPage("home");
         }}
-        onSettings={() => setCurrentPage("settings")}
-        onProcessStart={() => setCurrentPage("loading")}
+        onSettings={() => transitionToPage("settings")}
+        onProcessStart={() => transitionToPage("loading")}
         onProcessComplete={(data) => {
-          setExtractedData(data);
-          setCurrentPage("results");
+          stateManager.updateContext({ extractedData: data });
+          transitionToPage("results");
         }}
         onProgressCallback={handleProgressCallback}
-        detectedFormData={detectedFormData}
-        detectedSourceDocuments={detectedSourceDocuments}
+        detectedFormData={stateContext.detectedFormData}
+        detectedSourceDocuments={stateContext.detectedSourceDocuments}
       />
     );
   }
 
   if (currentPage === "settings") {
-    return <SettingsPage onBack={() => setCurrentPage("home")} />;
+    return <SettingsPage onBack={() => transitionToPage("home")} />;
   }
 
   if (currentPage === "loading") {
@@ -137,39 +172,41 @@ export default function App() {
     );
   }
 
-  if (currentPage === "results" && extractedData) {
+  if (currentPage === "results" && stateContext.extractedData) {
     return (
       <ResultsPage
-        data={extractedData}
+        data={stateContext.extractedData}
         onBack={() => {
-          setExtractedData(null);
-          setCurrentPage("upload");
+          stateManager.updateContext({ extractedData: null });
+          transitionToPage("upload");
         }}
-        detectedFormData={detectedFormData}
-        detectedSourceDocuments={detectedSourceDocuments}
+        detectedFormData={stateContext.detectedFormData}
+        detectedSourceDocuments={stateContext.detectedSourceDocuments}
       />
     );
   }
 
   if (currentPage === "htmlsource") {
-    return <HTMLSourcePage onBack={() => setCurrentPage("home")} />;
+    return <HTMLSourcePage onBack={() => transitionToPage("home")} />;
   }
 
   if (currentPage === "formdetection") {
     return (
       <FormDetectionPage
-        onBack={() => setCurrentPage("home")}
+        onBack={() => transitionToPage("home")}
         onContinueToUpload={(formData, sourceDocuments) => {
-          setDetectedFormData(formData);
-          setDetectedSourceDocuments(sourceDocuments);
-          setCurrentPage("upload");
+          stateManager.updateContext({
+            detectedFormData: formData,
+            detectedSourceDocuments: sourceDocuments,
+          });
+          transitionToPage("upload");
         }}
       />
     );
   }
 
   if (currentPage === "debug") {
-    return <DebugPage onBack={() => setCurrentPage("home")} />;
+    return <DebugPage onBack={() => transitionToPage("home")} />;
   }
 
   return (
@@ -180,7 +217,7 @@ export default function App() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setCurrentPage("settings")}
+            onClick={() => transitionToPage("settings")}
           >
             <Settings className="w-5 h-5" />
           </Button>

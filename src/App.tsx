@@ -14,8 +14,14 @@ import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 import { StateManager, type PageType, type StateContext } from "./lib/state/AppState";
 
+// MVC Pattern - Import Controllers and Models
+import { NavigationController, SettingsController } from "./controllers/DocumentController";
+import type { DocumentUploadModel } from "./models/DocumentModel";
+
+// Use model type instead of local interface
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
+// Legacy interface for compatibility - should use DocumentUploadModel from models
 interface DocumentUpload {
   type: DocumentType;
   file: File | null;

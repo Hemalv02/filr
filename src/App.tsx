@@ -18,6 +18,11 @@ import { StateManager, type PageType, type StateContext } from "./lib/state/AppS
 import { NavigationController, SettingsController } from "./controllers/DocumentController";
 import type { DocumentUploadModel } from "./models/DocumentModel";
 
+// Offline Processing - Import Components
+import { QueueStatus } from "./components/QueueStatus";
+import { ToastContainer } from "./components/ToastContainer";
+import { initializeOfflineProcessing } from "./lib/offline";
+
 // Use model type instead of local interface
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
@@ -93,6 +98,20 @@ export default function App() {
     const context = stateManager.getContext();
     setStateContext({ ...context });
   }, [stateManager]);
+
+  // Initialize offline processing subsystem
+  useEffect(() => {
+    const initOffline = async () => {
+      try {
+        await initializeOfflineProcessing();
+        console.log('[App] Offline processing initialized');
+      } catch (error) {
+        console.error('[App] Failed to initialize offline processing:', error);
+      }
+    };
+
+    initOffline();
+  }, []);
 
   // Helper function to transition between states
   const transitionToPage = (targetPage: PageType): boolean => {
@@ -216,18 +235,25 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-full bg-background flex items-center justify-center p-8">
-      <div className="w-full max-w-lg space-y-10 text-center">
-        {/* Settings Button */}
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => transitionToPage("settings")}
-          >
-            <Settings className="w-5 h-5" />
-          </Button>
-        </div>
+    <>
+      {/* Toast notifications for offline/online status */}
+      <ToastContainer />
+
+      <div className="h-screen w-full bg-background flex items-center justify-center p-8">
+        <div className="w-full max-w-lg space-y-10 text-center">
+          {/* Offline Queue Status */}
+          <QueueStatus />
+
+          {/* Settings Button */}
+          <div className="flex justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => transitionToPage("settings")}
+            >
+              <Settings className="w-5 h-5" />
+            </Button>
+          </div>
 
         {/* Logo/Icon */}
         <div className="flex justify-center mb-8">
@@ -269,5 +295,6 @@ export default function App() {
         </p>
       </div>
     </div>
+    </>
   );
 }

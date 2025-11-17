@@ -8,6 +8,7 @@ import { processDocuments, type ExtractedData } from "./lib/gemini";
 import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynamicExtraction";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
+import { getApiKey, getModel } from "./lib/storage";
 
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
@@ -113,9 +114,9 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
       return;
     }
 
-    // Check for API key and model
-    const apiKey = localStorage.getItem("gemini_api_key");
-    const model = localStorage.getItem("gemini_model");
+    // Check for API key and model from chrome.storage
+    const apiKey = await getApiKey();
+    const model = await getModel();
 
     if (!apiKey) {
       setProcessingError("Please configure your Gemini API key in settings");

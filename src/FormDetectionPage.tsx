@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Loader2, CheckCircle2, FileSearch, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { detectAndExtractForm, detectRequiredDocuments, type FormData, type SourceDocumentList } from "./lib/formExtraction";
+import { getApiKey } from "./lib/storage";
 
 interface FormDetectionPageProps {
   onBack: () => void;
@@ -20,8 +21,8 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
   useEffect(() => {
     const detectFormAndDocuments = async () => {
       try {
-        // Get API key from localStorage
-        const apiKey = localStorage.getItem("gemini_api_key");
+        // Get API key from chrome.storage
+        const apiKey = await getApiKey();
 
         if (!apiKey) {
           setError("API key not found. Please configure your API key in settings.");

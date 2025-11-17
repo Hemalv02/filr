@@ -8,7 +8,7 @@ export default defineConfig({
     action: {
       default_title: 'Open Filr Side Panel',
     },
-    permissions: ['scripting', 'tabs'],
+    permissions: ['scripting', 'tabs', 'storage'],
     host_permissions: ['<all_urls>'],
   },
 });

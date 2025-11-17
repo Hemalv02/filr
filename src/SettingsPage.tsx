@@ -23,6 +23,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { saveApiKey, getApiKey, saveModel, getModel } from "./lib/storage";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -57,15 +58,18 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      apiKey: localStorage.getItem("gemini_api_key") || "",
-      model: (localStorage.getItem("gemini_model") as FormValues["model"]) || "Gemini 2.0 Flash",
+    defaultValues: async () => {
+      const [apiKey, model] = await Promise.all([getApiKey(), getModel()]);
+      return {
+        apiKey: apiKey || "",
+        model: (model as FormValues["model"]) || "Gemini 2.0 Flash",
+      };
     },
   });
 
-  const onSubmit = (values: FormValues) => {
-    localStorage.setItem("gemini_api_key", values.apiKey.trim());
-    localStorage.setItem("gemini_model", values.model);
+  const onSubmit = async (values: FormValues) => {
+    await saveApiKey(values.apiKey.trim());
+    await saveModel(values.model);
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };

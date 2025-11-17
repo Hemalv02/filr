@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Settings } from "lucide-react";
 import { useState, useRef } from "react";
+import { getApiKey } from "./lib/storage";
 import UploadPage from "./UploadPage";
 import SettingsPage from "./SettingsPage";
 import ProcessingScreen from "./ProcessingScreen";
@@ -82,9 +83,9 @@ export default function App() {
     progressCallbackRef.current = callback;
   };
 
-  const handleGetStarted = () => {
+  const handleGetStarted = async () => {
     // Check if API key exists
-    const apiKey = localStorage.getItem("gemini_api_key");
+    const apiKey = await getApiKey();
 
     if (!apiKey) {
       alert("Please set your Gemini API key in settings first!");

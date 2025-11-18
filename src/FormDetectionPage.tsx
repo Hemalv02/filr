@@ -1,9 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Loader2, CheckCircle2, FileSearch, FileText } from "lucide-react";
+import { ArrowLeft, Loader2, CheckCircle2, FileSearch, FileText, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { detectAndExtractForm, detectRequiredDocuments, type FormData, type SourceDocumentList } from "./lib/formExtraction";
+import {
+  getCachedFormData,
+  isCachedFormCurrent,
+  cacheFormData,
+  clearFormCache,
+  getCacheInfo,
+} from "./lib/FormCache";
 
 interface FormDetectionPageProps {
   onBack: () => void;
@@ -11,60 +18,123 @@ interface FormDetectionPageProps {
 }
 
 export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDetectionPageProps) {
-  const [isDetecting, setIsDetecting] = useState(true);
+  const [isDetecting, setIsDetecting] = useState(false); // Start false, check cache first
   const [formData, setFormData] = useState<FormData | null>(null);
   const [sourceDocuments, setSourceDocuments] = useState<SourceDocumentList | null>(null);
   const [currentStep, setCurrentStep] = useState<"detecting_form" | "detecting_documents" | "complete">("detecting_form");
   const [error, setError] = useState<string | null>(null);
 
+  // Cache-related state
+  const [showResumeDialog, setShowResumeDialog] = useState(false);
+  const [cacheInfo, setCacheInfo] = useState<any>(null);
+
   useEffect(() => {
-    const detectFormAndDocuments = async () => {
+    // Check cache first before detecting
+    const checkCacheAndDetect = async () => {
       try {
-        // Get API key from localStorage
-        const apiKey = localStorage.getItem("gemini_api_key");
+        const info = await getCacheInfo();
 
-        if (!apiKey) {
-          setError("API key not found. Please configure your API key in settings.");
-          setIsDetecting(false);
-          return;
-        }
-
-        // Step 1: Detect and extract form from current page
-        setCurrentStep("detecting_form");
-        const extractedFormData = await detectAndExtractForm(apiKey);
-        setFormData(extractedFormData);
-        console.log("Detected form:", extractedFormData);
-
-        // Step 2: Detect required documents
-        setCurrentStep("detecting_documents");
-        const requiredDocuments = await detectRequiredDocuments(extractedFormData, apiKey);
-        setSourceDocuments(requiredDocuments);
-        console.log("Required documents:", requiredDocuments);
-
-        // Complete
-        setCurrentStep("complete");
-      } catch (err) {
-        console.error("Error detecting form:", err);
-
-        // Check if it's a network error
-        const errorMessage = err instanceof Error ? err.message : "Failed to detect form";
-        const isNetworkError = errorMessage.includes("Failed to fetch") ||
-                               errorMessage.includes("NetworkError") ||
-                               errorMessage.includes("ERR_NAME_NOT_RESOLVED") ||
-                               !navigator.onLine;
-
-        if (isNetworkError) {
-          setError("Cannot detect form while offline. Please connect to the internet and try again, or go back and manually upload your documents.");
+        if (info && info.exists && info.isCurrent) {
+          // Cache exists and matches current form
+          console.log('[FormDetection] Found matching cache - showing resume dialog');
+          setCacheInfo(info);
+          setShowResumeDialog(true);
         } else {
-          setError(errorMessage);
+          // No cache or different form - start fresh detection
+          console.log('[FormDetection] No matching cache - starting fresh detection');
+          startFreshDetection();
         }
-      } finally {
-        setIsDetecting(false);
+      } catch (err) {
+        console.error('[FormDetection] Error checking cache:', err);
+        // If cache check fails, just start fresh
+        startFreshDetection();
       }
     };
 
-    detectFormAndDocuments();
+    checkCacheAndDetect();
   }, []);
+
+  const handleResumeCache = async () => {
+    console.log('[FormDetection] User chose to resume cached form');
+    setShowResumeDialog(false);
+
+    try {
+      const cached = await getCachedFormData();
+      if (cached) {
+        setFormData(cached.formData);
+        setSourceDocuments(cached.sourceDocuments);
+        setCurrentStep("complete");
+      } else {
+        // Cache disappeared, start fresh
+        startFreshDetection();
+      }
+    } catch (err) {
+      console.error('[FormDetection] Error loading cache:', err);
+      setError("Failed to load cached data. Starting fresh detection...");
+      startFreshDetection();
+    }
+  };
+
+  const handleStartNewDetection = () => {
+    console.log('[FormDetection] User chose to start new detection');
+    setShowResumeDialog(false);
+    clearFormCache();
+    startFreshDetection();
+  };
+
+  const startFreshDetection = () => {
+    setIsDetecting(true);
+    detectFormAndDocuments();
+  };
+
+  const detectFormAndDocuments = async () => {
+    try {
+      // Get API key from localStorage
+      const apiKey = localStorage.getItem("gemini_api_key");
+
+      if (!apiKey) {
+        setError("API key not found. Please configure your API key in settings.");
+        setIsDetecting(false);
+        return;
+      }
+
+      // Step 1: Detect and extract form from current page
+      setCurrentStep("detecting_form");
+      const extractedFormData = await detectAndExtractForm(apiKey);
+      setFormData(extractedFormData);
+      console.log("Detected form:", extractedFormData);
+
+      // Step 2: Detect required documents
+      setCurrentStep("detecting_documents");
+      const requiredDocuments = await detectRequiredDocuments(extractedFormData, apiKey);
+      setSourceDocuments(requiredDocuments);
+      console.log("Required documents:", requiredDocuments);
+
+      // Step 3: Cache the results for future use
+      console.log('[FormDetection] Caching detection results...');
+      await cacheFormData(extractedFormData, requiredDocuments);
+
+      // Complete
+      setCurrentStep("complete");
+    } catch (err) {
+      console.error("Error detecting form:", err);
+
+      // Check if it's a network error
+      const errorMessage = err instanceof Error ? err.message : "Failed to detect form";
+      const isNetworkError = errorMessage.includes("Failed to fetch") ||
+                             errorMessage.includes("NetworkError") ||
+                             errorMessage.includes("ERR_NAME_NOT_RESOLVED") ||
+                             !navigator.onLine;
+
+      if (isNetworkError) {
+        setError("Cannot detect form while offline. Please connect to the internet and try again, or go back and manually upload your documents.");
+      } else {
+        setError(errorMessage);
+      }
+    } finally {
+      setIsDetecting(false);
+    }
+  };
 
   return (
     <div className="h-screen w-full bg-background flex flex-col">
@@ -80,8 +150,67 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-3xl mx-auto space-y-6">
+          {/* Resume Cache Dialog */}
+          {showResumeDialog && cacheInfo && (
+            <div className="flex flex-col items-center justify-center py-16 space-y-6">
+              <div className="w-20 h-20 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                <RefreshCw className="w-10 h-10 text-blue-600" />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-semibold">Resume Previous Session?</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  We found a previously detected form for this page.
+                </p>
+              </div>
+
+              {/* Cache Info Card */}
+              <Card className="w-full max-w-md">
+                <CardHeader>
+                  <CardTitle className="text-base">Cached Form Data</CardTitle>
+                  <CardDescription>
+                    Detected on {cacheInfo.cachedAt?.toLocaleDateString()} at{' '}
+                    {cacheInfo.cachedAt?.toLocaleTimeString()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Form Fields:</span>
+                    <span className="font-medium">{cacheInfo.formFieldCount}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Required Documents:</span>
+                    <span className="font-medium">{cacheInfo.documentCount}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 w-full max-w-md">
+                <Button
+                  onClick={handleResumeCache}
+                  className="flex-1"
+                  size="lg"
+                >
+                  Resume Session
+                </Button>
+                <Button
+                  onClick={handleStartNewDetection}
+                  variant="outline"
+                  className="flex-1"
+                  size="lg"
+                >
+                  Start New Detection
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground max-w-md text-center">
+                💡 <strong>Tip:</strong> Resume to save API credits. Start new if the form has changed.
+              </p>
+            </div>
+          )}
+
           {/* Loading State */}
-          {isDetecting && (
+          {!showResumeDialog && isDetecting && (
             <div className="flex flex-col items-center justify-center py-16 space-y-6">
               <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
                 <Loader2 className="w-10 h-10 text-primary animate-spin" />
@@ -100,7 +229,7 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
           )}
 
           {/* Error State */}
-          {!isDetecting && error && (
+          {!showResumeDialog && !isDetecting && error && (
             <div className="flex flex-col items-center justify-center py-16 space-y-6">
               <div className="w-20 h-20 rounded-2xl bg-destructive/10 flex items-center justify-center">
                 <FileSearch className="w-10 h-10 text-destructive" />
@@ -114,7 +243,7 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
           )}
 
           {/* No Form Detected State */}
-          {!isDetecting && !error && formData && formData.inputs.length === 0 && (
+          {!showResumeDialog && !isDetecting && !error && formData && formData.inputs.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 space-y-6">
               <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center">
                 <FileSearch className="w-10 h-10 text-muted-foreground" />
@@ -130,7 +259,7 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
           )}
 
           {/* Success State */}
-          {!isDetecting && !error && formData && formData.inputs.length > 0 && sourceDocuments && (
+          {!showResumeDialog && !isDetecting && !error && formData && formData.inputs.length > 0 && sourceDocuments && (
             <div className="space-y-6">
               {/* Success Header */}
               <div className="flex items-center gap-3 pb-4">

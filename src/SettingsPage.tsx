@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Form,
   FormControl,
@@ -18,11 +19,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Trash2, FileText, Calendar } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { getCachedFormData, clearFormCache, getCacheInfo } from "./lib/FormCache";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -55,6 +57,8 @@ type FormValues = z.infer<typeof formSchema>;
 export default function SettingsPage({ onBack }: SettingsPageProps) {
   const [showApiKey, setShowApiKey] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [cacheInfo, setCacheInfo] = useState<any>(null);
+  const [loadingCache, setLoadingCache] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -93,6 +97,44 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
       alert('❌ Failed to clear queue. Please try again.');
     }
   };
+
+  const loadCacheInfo = async () => {
+    setLoadingCache(true);
+    try {
+      const info = await getCacheInfo();
+      setCacheInfo(info);
+    } catch (error) {
+      console.error('[Settings] Failed to load cache info:', error);
+      setCacheInfo(null);
+    } finally {
+      setLoadingCache(false);
+    }
+  };
+
+  const handleClearFormCache = async () => {
+    const confirmed = confirm(
+      '⚠️ CLEAR FORM CACHE?\n\n' +
+      'This will delete the cached form detection data.\n' +
+      'You will need to re-detect the form next time.\n\n' +
+      'Continue?'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      clearFormCache();
+      setCacheInfo(null);
+      alert('✅ Form cache cleared successfully.');
+    } catch (error) {
+      console.error('[Settings] Failed to clear cache:', error);
+      alert('❌ Failed to clear cache. Please try again.');
+    }
+  };
+
+  // Load cache info on mount
+  useEffect(() => {
+    loadCacheInfo();
+  }, []);
 
   return (
     <div className="h-screen w-full bg-background p-6 overflow-auto">
@@ -257,6 +299,94 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                       </Button>
                     </div>
                   </div>
+                </div>
+
+                {/* Form Cache Management */}
+                <Separator className="my-6" />
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Form Cache</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Manage cached form detection data to save API credits
+                    </p>
+                  </div>
+
+                  {loadingCache ? (
+                    <Card>
+                      <CardContent className="p-6 text-center text-muted-foreground">
+                        Loading cache information...
+                      </CardContent>
+                    </Card>
+                  ) : cacheInfo && cacheInfo.exists ? (
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-base flex items-center gap-2">
+                              <FileText className="w-4 h-4" />
+                              Cached Form Data
+                              {cacheInfo.isCurrent && (
+                                <Badge variant="secondary" className="text-xs">Current Page</Badge>
+                              )}
+                            </CardTitle>
+                            <CardDescription className="mt-1">
+                              {cacheInfo.url ? new URL(cacheInfo.url).hostname : 'Unknown URL'}
+                            </CardDescription>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Form Fields</p>
+                            <p className="font-semibold">{cacheInfo.formFieldCount || 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Documents</p>
+                            <p className="font-semibold">{cacheInfo.documentCount || 0}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="w-4 h-4" />
+                          <span>
+                            Cached on {cacheInfo.cachedAt?.toLocaleDateString()} at{' '}
+                            {cacheInfo.cachedAt?.toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <Separator />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={loadCacheInfo}
+                            className="flex-1"
+                          >
+                            Refresh
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleClearFormCache}
+                            className="flex-1"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Clear Cache
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-6 text-center">
+                        <p className="text-muted-foreground">No cached form data found</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Form detection results will be cached automatically to save API credits
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
 
                 <Separator />

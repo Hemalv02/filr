@@ -28,6 +28,7 @@ export interface StateContext {
   detectedSourceDocuments: SourceDocumentList | null;
   progressCallback: ((event: ProgressEvent) => void) | null;
   error: string | null;
+  uploadedFiles: Map<string, File> | null; // Track uploaded files by document type
 }
 
 // State interface - all states must implement this
@@ -137,7 +138,7 @@ export class UploadState extends BaseState {
 
   constructor() {
     super();
-    this.allowedTransitions = ["home", "settings", "loading"];
+    this.allowedTransitions = ["home", "settings", "loading", "results"];
   }
 
   validate(context: StateContext): boolean {

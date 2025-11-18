@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { ArrowLeft, Settings, AlertCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, Settings, AlertCircle, Trash2, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { processDocuments, type ExtractedData } from "./lib/gemini";
 import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynamicExtraction";
@@ -40,9 +40,13 @@ interface UploadPageProps {
   onProgressCallback: (callback: (event: ProgressEvent) => void) => void;
   detectedFormData?: FormData | null;
   detectedSourceDocuments?: SourceDocumentList | null;
+  extractedData?: ExtractedData | null;
+  onViewResults?: () => void;
+  uploadedFiles?: Map<string, File> | null;
+  onFileUpload?: (type: string, file: File | null) => void;
 }
 
-export default function UploadPage({ documents, setDocuments, onClearAll, onBack, onSettings, onProcessComplete, onProcessStart, onProgressCallback, detectedFormData, detectedSourceDocuments }: UploadPageProps) {
+export default function UploadPage({ documents, setDocuments, onClearAll, onBack, onSettings, onProcessComplete, onProcessStart, onProgressCallback, detectedFormData, detectedSourceDocuments, extractedData, onViewResults, uploadedFiles, onFileUpload }: UploadPageProps) {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -55,18 +59,23 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
     if (detectedSourceDocuments && detectedSourceDocuments.source_documents.length > 0) {
       const converted = detectedSourceDocuments.source_documents.map((doc) => ({
         type: doc.file_id as DocumentType,
-        file: null,
+        file: uploadedFiles?.get(doc.file_id) || null, // Restore from shared state
         required: false, // Make all documents optional
         label: doc.document_name_bangla,
         description: doc.notes || doc.necessity,
       }));
       setDynamicDocuments(converted);
     }
-  }, [detectedSourceDocuments]);
+  }, [detectedSourceDocuments, uploadedFiles]);
 
   const displayDocuments = dynamicDocuments.length > 0 ? dynamicDocuments : documents;
 
   const handleFileSelect = (type: DocumentType, file: File | null) => {
+    // Update shared uploaded files state
+    if (onFileUpload) {
+      onFileUpload(type, file);
+    }
+
     if (dynamicDocuments.length > 0) {
       // Update dynamic documents state
       setDynamicDocuments(
@@ -326,6 +335,37 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
         <div className="max-w-2xl mx-auto space-y-6">
+          {/* Extracted Data Banner - Show if data exists */}
+          {extractedData && Object.keys(extractedData).length > 0 && (
+            <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-green-900 dark:text-green-100">
+                      Data Extracted Successfully
+                    </h3>
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      {Object.keys(extractedData).length} fields extracted • Upload more documents or view results
+                    </p>
+                  </div>
+                </div>
+                {onViewResults && (
+                  <Button
+                    onClick={onViewResults}
+                    variant="outline"
+                    size="sm"
+                    className="border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900"
+                  >
+                    View Results
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           {processingError && (
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />

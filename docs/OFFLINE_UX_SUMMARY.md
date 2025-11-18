@@ -198,3 +198,54 @@ Users now have **complete visibility** into:
 - ✅ Success confirmations
 
 **No more guessing if the offline feature is working - they can SEE it!** 👀
+ Wait, I need to think about this differently. The issue is that when the UploadPage component unmounts (when
+  navigating to results) and remounts (when coming back), all local state is lost. I need to lift the file state to
+   App.tsx so it persists across navigation.
+
+  Let me update the state context to include uploaded documents:
+
+● Update(src/lib/state/AppState.ts)
+  ⎿  Updated src/lib/state/AppState.ts with 1 addition                                          
+       28      detectedSourceDocuments: SourceDocumentList | null;
+       29      progressCallback: ((event: ProgressEvent) => void) | null;
+       30      error: string | null;
+       31 +    uploadedFiles: Map<string, File> | null; // Track uploaded files by document type
+       32    }
+       33    
+       34    // State interface - all states must implement this
+
+● Update(src/App.tsx)
+  ⎿  Updated src/App.tsx with 1 addition                                              
+       46        detectedSourceDocuments: null,
+       47        progressCallback: null,
+       48        error: null,
+       49 +      uploadedFiles: new Map<string, File>(),
+       50      });
+       51    
+       52      const stateManager = useMemo(() => new StateManager(stateContext), []);
+
+● Now I need to update UploadPage to accept and use this shared uploaded files state:
+
+● Update(src/UploadPage.tsx)
+  ⎿  Updated src/UploadPage.tsx with 2 additions                                                              
+       42      detectedSourceDocuments?: SourceDocumentList | null;
+       43      extractedData?: ExtractedData | null;
+       44      onViewResults?: () => void;
+       45 +    uploadedFiles?: Map<string, File> | null;
+       46 +    onFileUpload?: (type: string, file: File | null) => void;
+       47    }
+       48    
+       49    export default function UploadPage({ documents, setDocuments, onClearAll, onBack, onSettings, 
+            onProcessComplete, onProcessStart, onProgressCallback, detectedFormData, detectedSourceDocuments, 
+            extractedData, onViewResults }: UploadPageProps) {
+
+∴ Thought for 1s (ctrl+o to show thinking)
+
+✶ Fixing View Results button… (esc to interrupt · ctrl+t to hide todos · 6m 47s · ↓ 9.7k tokens)
+  ⎿  ☒ Preserve extracted data when navigating back to upload
+     ☒ Show extracted data summary on upload page
+     ☒ Add option to view results without losing upload state
+     ☒ Add cache management UI in settings
+     ☐ Fix View Results button not working
+     ☐ Preserve uploaded document files when navigating back
+     ☐ Build and test all fixes

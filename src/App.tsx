@@ -46,6 +46,7 @@ export default function App() {
     detectedSourceDocuments: null,
     progressCallback: null,
     error: null,
+    uploadedFiles: new Map<string, File>(),
   });
 
   const stateManager = useMemo(() => new StateManager(stateContext), []);
@@ -196,6 +197,19 @@ export default function App() {
         onProgressCallback={handleProgressCallback}
         detectedFormData={stateContext.detectedFormData}
         detectedSourceDocuments={stateContext.detectedSourceDocuments}
+        extractedData={stateContext.extractedData}
+        onViewResults={() => transitionToPage("results")}
+        uploadedFiles={stateContext.uploadedFiles}
+        onFileUpload={(type, file) => {
+          const newFiles = new Map(stateContext.uploadedFiles || new Map());
+          if (file) {
+            newFiles.set(type, file);
+          } else {
+            newFiles.delete(type);
+          }
+          stateManager.updateContext({ uploadedFiles: newFiles });
+          setStateContext({ ...stateManager.getContext() });
+        }}
       />
       </>
     );
@@ -232,7 +246,8 @@ export default function App() {
         <ResultsPage
         data={stateContext.extractedData}
         onBack={() => {
-          stateManager.updateContext({ extractedData: null });
+          // Keep extracted data when going back - don't clear it
+          // User might want to add more documents or review uploads
           transitionToPage("upload");
         }}
         detectedFormData={stateContext.detectedFormData}

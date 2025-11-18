@@ -13,6 +13,13 @@
  * - Facade: LocalDocumentStore simplifies IndexedDB
  */
 
+// Import all classes first to ensure proper bundling order
+import { LocalDocumentStore } from './LocalDocumentStore';
+import { NetworkStatusManager } from './NetworkStatusManager';
+import { SyncManager } from './SyncManager';
+import { OfflineNotifications } from './OfflineNotifications';
+import { ProcessingProxySingleton } from './ProcessingProxy';
+
 // Core Components
 export { NetworkStatusManager } from './NetworkStatusManager';
 export type { NetworkStatus, NetworkStatusObserver } from './NetworkStatusManager';

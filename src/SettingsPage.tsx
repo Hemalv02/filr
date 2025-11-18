@@ -47,6 +47,7 @@ const formSchema = z.object({
   model: z.enum(GEMINI_MODELS, {
     message: "Please select a model",
   }),
+  enableOfflineMode: z.boolean().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -60,14 +61,37 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     defaultValues: {
       apiKey: localStorage.getItem("gemini_api_key") || "",
       model: (localStorage.getItem("gemini_model") as FormValues["model"]) || "Gemini 2.0 Flash",
+      enableOfflineMode: localStorage.getItem("enable_offline_mode") !== "false", // Enabled by default
     },
   });
 
   const onSubmit = (values: FormValues) => {
     localStorage.setItem("gemini_api_key", values.apiKey.trim());
     localStorage.setItem("gemini_model", values.model);
+    localStorage.setItem("enable_offline_mode", String(values.enableOfflineMode ?? true));
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  const handleClearQueue = async () => {
+    const confirmed = confirm(
+      '⚠️ CLEAR ALL QUEUED DOCUMENTS?\n\n' +
+      'This will permanently delete all documents stored offline.\n' +
+      'This action cannot be undone.\n\n' +
+      'Continue?'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const SimpleOfflineQueue = (await import('./lib/offline/SimpleOfflineQueue')).default;
+      const queue = SimpleOfflineQueue();
+      const cleared = await queue.clearAll();
+      alert(`✅ Cleared ${cleared} queued document(s) successfully.`);
+    } catch (error) {
+      console.error('[Settings] Failed to clear queue:', error);
+      alert('❌ Failed to clear queue. Please try again.');
+    }
   };
 
   return (
@@ -166,6 +190,75 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
                     </FormItem>
                   )}
                 />
+
+                <Separator className="my-6" />
+
+                {/* Security & Privacy Section */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">Security & Privacy</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Manage offline storage and queued documents
+                    </p>
+                  </div>
+
+                  {/* Offline Mode Toggle */}
+                  <FormField
+                    control={form.control}
+                    name="enableOfflineMode"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Offline Mode</FormLabel>
+                          <FormDescription>
+                            Allow documents to be queued when offline<br />
+                            <span className="text-xs text-yellow-600 dark:text-yellow-500">
+                              ⚠️ Documents stored unencrypted on device
+                            </span>
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={field.value ?? true}
+                            onClick={() => field.onChange(!(field.value ?? true))}
+                            className={`
+                              relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                              ${field.value ?? true ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-700'}
+                            `}
+                          >
+                            <span
+                              className={`
+                                inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                                ${field.value ?? true ? 'translate-x-6' : 'translate-x-1'}
+                              `}
+                            />
+                          </button>
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Clear Queue Button */}
+                  <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-destructive">Danger Zone</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Clear all documents stored offline. This cannot be undone.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleClearQueue}
+                      >
+                        Clear All Queued Documents
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
                 <Separator />
                 <Button
               type="submit"

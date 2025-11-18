@@ -21,6 +21,8 @@ import type { DocumentUploadModel } from "./models/DocumentModel";
 // Offline Processing - Import Components
 import { QueueStatus } from "./components/QueueStatus";
 import { ToastContainer } from "./components/ToastContainer";
+import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
+import { OfflineStatusIndicator } from "./components/OfflineStatusIndicator";
 import { initializeOfflineProcessing } from "./lib/offline";
 
 // Use model type instead of local interface
@@ -105,6 +107,18 @@ export default function App() {
       try {
         await initializeOfflineProcessing();
         console.log('[App] Offline processing initialized');
+
+        // Security: Auto-cleanup expired queued documents (older than 24 hours)
+        try {
+          const SimpleOfflineQueue = (await import('./lib/offline/SimpleOfflineQueue')).default;
+          const queue = SimpleOfflineQueue();
+          const expired = await queue.clearExpired(24);
+          if (expired > 0) {
+            console.log(`[App] 🔒 Cleared ${expired} expired documents for security`);
+          }
+        } catch (cleanupError) {
+          console.warn('[App] Failed to cleanup expired documents:', cleanupError);
+        }
       } catch (error) {
         console.error('[App] Failed to initialize offline processing:', error);
       }
@@ -156,7 +170,9 @@ export default function App() {
 
   if (currentPage === "upload") {
     return (
-      <UploadPage
+      <>
+        <OfflineStatusIndicator />
+        <UploadPage
         documents={documents}
         setDocuments={setDocuments}
         onClearAll={clearAllDocuments}
@@ -172,34 +188,48 @@ export default function App() {
         onProcessStart={() => transitionToPage("loading")}
         onProcessComplete={(data) => {
           stateManager.updateContext({ extractedData: data });
-          transitionToPage("results");
+          // Only transition if we're not already in results state
+          if (stateManager.getCurrentState() !== "results") {
+            transitionToPage("results");
+          }
         }}
         onProgressCallback={handleProgressCallback}
         detectedFormData={stateContext.detectedFormData}
         detectedSourceDocuments={stateContext.detectedSourceDocuments}
       />
+      </>
     );
   }
 
   if (currentPage === "settings") {
-    return <SettingsPage onBack={() => transitionToPage("home")} />;
+    return (
+      <>
+        <OfflineStatusIndicator />
+        <SettingsPage onBack={() => transitionToPage("home")} />
+      </>
+    );
   }
 
   if (currentPage === "loading") {
     return (
-      <ProcessingScreen
+      <>
+        <OfflineStatusIndicator />
+        <ProcessingScreen
         onProgress={(event) => {
           if (progressCallbackRef.current) {
             progressCallbackRef.current(event);
           }
         }}
       />
+      </>
     );
   }
 
   if (currentPage === "results" && stateContext.extractedData) {
     return (
-      <ResultsPage
+      <>
+        <OfflineStatusIndicator />
+        <ResultsPage
         data={stateContext.extractedData}
         onBack={() => {
           stateManager.updateContext({ extractedData: null });
@@ -208,16 +238,24 @@ export default function App() {
         detectedFormData={stateContext.detectedFormData}
         detectedSourceDocuments={stateContext.detectedSourceDocuments}
       />
+      </>
     );
   }
 
   if (currentPage === "htmlsource") {
-    return <HTMLSourcePage onBack={() => transitionToPage("home")} />;
+    return (
+      <>
+        <OfflineStatusIndicator />
+        <HTMLSourcePage onBack={() => transitionToPage("home")} />
+      </>
+    );
   }
 
   if (currentPage === "formdetection") {
     return (
-      <FormDetectionPage
+      <>
+        <OfflineStatusIndicator />
+        <FormDetectionPage
         onBack={() => transitionToPage("home")}
         onContinueToUpload={(formData, sourceDocuments) => {
           stateManager.updateContext({
@@ -227,15 +265,27 @@ export default function App() {
           transitionToPage("upload");
         }}
       />
+      </>
     );
   }
 
   if (currentPage === "debug") {
-    return <DebugPage onBack={() => transitionToPage("home")} />;
+    return (
+      <>
+        <OfflineStatusIndicator />
+        <DebugPage onBack={() => transitionToPage("home")} />
+      </>
+    );
   }
 
   return (
     <>
+      {/* Always-visible status indicator */}
+      <OfflineStatusIndicator />
+
+      {/* Network status banner (shown when offline or syncing) */}
+      <NetworkStatusBanner />
+
       {/* Toast notifications for offline/online status */}
       <ToastContainer />
 

@@ -19,6 +19,7 @@ export class NetworkStatusManager {
   private static instance: NetworkStatusManager | null = null;
   private observers: Set<NetworkStatusObserver> = new Set();
   private currentStatus: NetworkStatus;
+  private connectivityCheckInterval: number | null = null;
 
   private constructor() {
     // Initialize with current browser status
@@ -26,6 +27,15 @@ export class NetworkStatusManager {
 
     // Set up browser event listeners
     this.setupEventListeners();
+
+    // Verify actual internet connectivity (not just local network)
+    this.verifyConnectivity();
+
+    // Set up periodic connectivity checks (every 30 seconds)
+    // This catches cases where internet drops without browser event
+    this.connectivityCheckInterval = window.setInterval(() => {
+      this.verifyConnectivity();
+    }, 30000); // 30 seconds
   }
 
   /**
@@ -50,9 +60,9 @@ export class NetworkStatusManager {
    * Handle online event
    */
   private handleOnline(): void {
-    console.log('[NetworkStatusManager] Network status changed: ONLINE');
-    this.currentStatus = 'online';
-    this.notifyObservers();
+    console.log('[NetworkStatusManager] Browser reports: ONLINE - verifying...');
+    // Verify actual connectivity, don't just trust browser
+    this.verifyConnectivity();
   }
 
   /**
@@ -62,6 +72,60 @@ export class NetworkStatusManager {
     console.log('[NetworkStatusManager] Network status changed: OFFLINE');
     this.currentStatus = 'offline';
     this.notifyObservers();
+  }
+
+  /**
+   * Verify actual internet connectivity by making a lightweight request
+   * This catches cases where browser reports online but internet is unavailable
+   */
+  private async verifyConnectivity(): Promise<void> {
+    // If browser says offline, trust it
+    if (!navigator.onLine) {
+      if (this.currentStatus !== 'offline') {
+        console.log('[NetworkStatusManager] Browser offline - updating status');
+        this.currentStatus = 'offline';
+        this.notifyObservers();
+      }
+      return;
+    }
+
+    // Browser says online, but verify with actual request
+    try {
+      // Try to fetch a tiny file from Google (fast and reliable)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+      const response = await fetch('https://www.google.com/favicon.ico', {
+        method: 'HEAD',
+        cache: 'no-cache',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        // Successfully connected to internet
+        if (this.currentStatus !== 'online') {
+          console.log('[NetworkStatusManager] Verified ONLINE - internet accessible');
+          this.currentStatus = 'online';
+          this.notifyObservers();
+        }
+      } else {
+        // Request failed - probably offline
+        if (this.currentStatus !== 'offline') {
+          console.log('[NetworkStatusManager] Request failed - updating to OFFLINE');
+          this.currentStatus = 'offline';
+          this.notifyObservers();
+        }
+      }
+    } catch (error) {
+      // Network error - definitely offline
+      if (this.currentStatus !== 'offline') {
+        console.log('[NetworkStatusManager] Network error - updating to OFFLINE:', error);
+        this.currentStatus = 'offline';
+        this.notifyObservers();
+      }
+    }
   }
 
   /**
@@ -121,11 +185,25 @@ export class NetworkStatusManager {
   }
 
   /**
+   * Manually refresh connectivity status
+   * Call this when you need an immediate check
+   */
+  public async refreshStatus(): Promise<void> {
+    await this.verifyConnectivity();
+  }
+
+  /**
    * Cleanup event listeners (for testing or teardown)
    */
   public cleanup(): void {
     window.removeEventListener('online', this.handleOnline.bind(this));
     window.removeEventListener('offline', this.handleOffline.bind(this));
+
+    if (this.connectivityCheckInterval !== null) {
+      window.clearInterval(this.connectivityCheckInterval);
+      this.connectivityCheckInterval = null;
+    }
+
     this.observers.clear();
   }
 

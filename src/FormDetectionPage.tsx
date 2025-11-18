@@ -45,7 +45,19 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
         setCurrentStep("complete");
       } catch (err) {
         console.error("Error detecting form:", err);
-        setError(err instanceof Error ? err.message : "Failed to detect form");
+
+        // Check if it's a network error
+        const errorMessage = err instanceof Error ? err.message : "Failed to detect form";
+        const isNetworkError = errorMessage.includes("Failed to fetch") ||
+                               errorMessage.includes("NetworkError") ||
+                               errorMessage.includes("ERR_NAME_NOT_RESOLVED") ||
+                               !navigator.onLine;
+
+        if (isNetworkError) {
+          setError("Cannot detect form while offline. Please connect to the internet and try again, or go back and manually upload your documents.");
+        } else {
+          setError(errorMessage);
+        }
       } finally {
         setIsDetecting(false);
       }

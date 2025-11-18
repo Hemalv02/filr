@@ -12,6 +12,13 @@ import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 // MVC PATTERN: Import controller
 import { DocumentController } from "./controllers/DocumentController";
 
+// Offline Processing - Import Components
+import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
+import { ToastContainer } from "./components/ToastContainer";
+import { QueueStatus } from "./components/QueueStatus";
+import { NetworkStatusManager } from "./lib/offline/NetworkStatusManager";
+import SimpleOfflineQueue from "./lib/offline/SimpleOfflineQueue";
+
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
 interface DocumentUpload {
@@ -41,6 +48,7 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [processingError, setProcessingError] = useState<string>("");
   const [dynamicDocuments, setDynamicDocuments] = useState<DocumentUpload[]>([]);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   // Convert detected source documents to DocumentUpload format
   useEffect(() => {
@@ -106,6 +114,12 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
   };
 
   const handleSubmit = async () => {
+    // Prevent double submission
+    if (isProcessing) {
+      console.log('Already processing, ignoring duplicate submission');
+      return;
+    }
+
     const allTouched: Record<string, boolean> = {};
     displayDocuments.forEach((doc) => {
       allTouched[doc.type] = true;
@@ -126,11 +140,9 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
     }
 
     setProcessingError("");
+    setIsProcessing(true);
 
     try {
-      // Show loading screen
-      onProcessStart();
-
       // Get all uploaded files
       const uploadedFiles = displayDocuments
         .filter((doc) => doc.file !== null)
@@ -141,6 +153,78 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
       console.log('Uploaded files count:', uploadedFiles.length);
       console.log('Uploaded files:', uploadedFiles.map(f => f.name));
       console.log('Has detected form data:', !!detectedFormData);
+
+      // Check if offline - queue documents instead of processing
+      const networkManager = NetworkStatusManager.getInstance();
+
+      // Force a fresh connectivity check before processing
+      console.log('[UploadPage] Refreshing connectivity status...');
+      await networkManager.refreshStatus();
+
+      const isOffline = !networkManager.isOnline();
+      const offlineModeEnabled = localStorage.getItem("enable_offline_mode") !== "false";
+
+      console.log('[UploadPage] Connectivity check result:', isOffline ? 'OFFLINE' : 'ONLINE');
+
+      if (isOffline) {
+        // Check if offline mode is enabled in settings
+        if (!offlineModeEnabled) {
+          setProcessingError(
+            "You are currently offline and offline mode is disabled in settings. " +
+            "Please connect to the internet or enable offline mode in settings to continue."
+          );
+          setIsProcessing(false);
+          return;
+        }
+        console.log('[UploadPage] Offline detected - queueing documents');
+
+        // Security warning for sensitive documents
+        const userConfirmed = confirm(
+          `⚠️ PRIVACY & SECURITY NOTICE\n\n` +
+          `You are currently offline. Your ${uploadedFiles.length} document(s) will be stored UNENCRYPTED on this device until processed.\n\n` +
+          `⚠️ Only proceed if:\n` +
+          `• This is your personal, secure device\n` +
+          `• No one else has access to this computer\n` +
+          `• You trust this device's security\n\n` +
+          `Documents will be automatically processed and deleted when you're back online.\n\n` +
+          `Continue with offline storage?`
+        );
+
+        if (!userConfirmed) {
+          setProcessingError("Offline storage cancelled. Please try again when you have internet connection.");
+          setIsProcessing(false);
+          return;
+        }
+
+        try {
+          const queue = SimpleOfflineQueue();
+          const jobId = await queue.queueDocuments(uploadedFiles, detectedFormData || null);
+
+          setProcessingError("");
+          setIsProcessing(false);
+
+          alert(
+            `✅ Documents queued successfully!\n\n` +
+            `${uploadedFiles.length} document(s) saved locally.\n` +
+            `Queue ID: ${jobId}\n\n` +
+            `⚠️ Remember: Documents are stored unencrypted on this device.\n` +
+            `They will be automatically processed when you're back online.`
+          );
+
+          return;
+        } catch (queueError) {
+          console.error('[UploadPage] Failed to queue documents:', queueError);
+          setProcessingError("Failed to queue documents for offline processing. Please try again.");
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      // Online - proceed with normal processing
+      console.log('[UploadPage] Online - processing documents immediately');
+
+      // Show loading screen
+      onProcessStart();
 
       // Set up progress callback
       onProgressCallback((event: ProgressEvent) => {
@@ -203,15 +287,24 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
           ? error.message
           : "Failed to process documents. Please try again."
       );
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
     <div className="h-screen w-full bg-background flex flex-col">
-      <div className="flex-shrink-0 p-6 pb-4 border-b">
+      {/* Queue Status */}
+      <div className="flex-shrink-0 px-6 pt-4">
         <div className="max-w-2xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between">
+          <QueueStatus />
+        </div>
+      </div>
+
+      <div className="flex-shrink-0 p-6 pb-4 border-b">
+          <div className="max-w-2xl mx-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={onBack}>
                 <ArrowLeft className="w-5 h-5" />

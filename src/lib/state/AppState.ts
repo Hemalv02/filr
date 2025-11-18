@@ -163,8 +163,8 @@ export class LoadingState extends BaseState {
   }
 
   validate(context: StateContext): boolean {
-    // Loading state requires progress callback
-    return context.progressCallback !== null;
+    // Loading state doesn't require progress callback - it's optional
+    return true;
   }
 
   onEnter(context: StateContext): void {

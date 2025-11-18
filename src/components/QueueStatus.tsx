@@ -10,9 +10,9 @@ import { LocalDocumentStore, type StorageStats } from '../lib/offline/LocalDocum
 import { SyncManager, type SyncEvent } from '../lib/offline/SyncManager';
 import { NetworkStatusManager } from '../lib/offline/NetworkStatusManager';
 import type { DocumentJob } from '../lib/offline/DocumentJob';
-import { Card } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+import { Button } from '@/components/ui/button';
 import { Spinner } from './ui/spinner';
 
 export function QueueStatus() {
@@ -175,116 +175,120 @@ export function QueueStatus() {
   }
 
   return (
-    <Card className="p-4 mb-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold">Offline Queue</h3>
-          <Badge className={isOnline ? 'bg-green-500' : 'bg-red-500'}>
-            {isOnline ? 'Online' : 'Offline'}
-          </Badge>
+    <Card className="mb-4">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg">Offline Queue</CardTitle>
+            <Badge className={isOnline ? 'bg-green-500' : 'bg-red-500'}>
+              {isOnline ? 'Online' : 'Offline'}
+            </Badge>
+          </div>
+
+          {isOnline && jobs.length > 0 && !isSyncing && (
+            <Button onClick={handleManualSync} size="sm">
+              Sync Now
+            </Button>
+          )}
         </div>
+      </CardHeader>
 
-        {isOnline && jobs.length > 0 && !isSyncing && (
-          <Button onClick={handleManualSync} size="sm">
-            Sync Now
-          </Button>
-        )}
-      </div>
-
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm">
-          <div>
-            <div className="text-gray-500">Total Jobs</div>
-            <div className="font-semibold">{stats.totalJobs}</div>
-          </div>
-          <div>
-            <div className="text-gray-500">Queued</div>
-            <div className="font-semibold text-blue-600">{stats.queuedJobs}</div>
-          </div>
-          <div>
-            <div className="text-gray-500">Failed</div>
-            <div className="font-semibold text-red-600">{stats.failedJobs}</div>
-          </div>
-          <div>
-            <div className="text-gray-500">Total Size</div>
-            <div className="font-semibold">{formatFileSize(stats.totalSize)}</div>
-          </div>
-        </div>
-      )}
-
-      {isSyncing && syncProgress && (
-        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <Spinner className="w-4 h-4" />
-            <span className="font-medium">
-              Syncing... ({syncProgress.current} / {syncProgress.total})
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-blue-600 h-2 rounded-full transition-all"
-              style={{
-                width: `${(syncProgress.current / syncProgress.total) * 100}%`,
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {jobs.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-medium text-gray-700">Jobs</h4>
-          {jobs.map((job) => (
-            <div
-              key={job.id}
-              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium truncate">{job.fileName}</span>
-                  {getStatusBadge(job.status)}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {formatDate(job.createdAt)} • {formatFileSize(job.fileData.size)}
-                  {job.attempts > 0 && ` • ${job.attempts} attempts`}
-                </div>
-                {job.errorMessage && (
-                  <div className="text-xs text-red-600 mt-1">
-                    Error: {job.errorMessage}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 ml-4">
-                {job.status === 'failed' && (
-                  <Button
-                    onClick={() => handleRetry(job.id)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    Retry
-                  </Button>
-                )}
-                {(job.status === 'queued' || job.status === 'failed') && (
-                  <Button
-                    onClick={() => handleCancel(job.id)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </div>
+      <CardContent className="space-y-4">
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <div className="text-muted-foreground">Total Jobs</div>
+              <div className="font-semibold">{stats.totalJobs}</div>
             </div>
-          ))}
-        </div>
-      )}
+            <div>
+              <div className="text-muted-foreground">Queued</div>
+              <div className="font-semibold text-blue-600">{stats.queuedJobs}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Failed</div>
+              <div className="font-semibold text-red-600">{stats.failedJobs}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Total Size</div>
+              <div className="font-semibold">{formatFileSize(stats.totalSize)}</div>
+            </div>
+          </div>
+        )}
 
-      {jobs.length === 0 && stats && stats.totalJobs === 0 && (
-        <div className="text-center text-gray-500 py-4">
-          No queued documents
-        </div>
-      )}
+        {isSyncing && syncProgress && (
+          <div className="p-3 bg-blue-50 rounded-lg space-y-2">
+            <div className="flex items-center gap-2">
+              <Spinner className="w-4 h-4" />
+              <span className="font-medium text-sm">
+                Syncing... ({syncProgress.current} / {syncProgress.total})
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all"
+                style={{
+                  width: `${(syncProgress.current / syncProgress.total) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {jobs.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-muted-foreground">Jobs</h4>
+            {jobs.map((job) => (
+              <div
+                key={job.id}
+                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium truncate text-sm">{job.fileName}</span>
+                    {getStatusBadge(job.status)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatDate(job.createdAt)} • {formatFileSize(job.fileData.size)}
+                    {job.attempts > 0 && ` • ${job.attempts} attempts`}
+                  </div>
+                  {job.errorMessage && (
+                    <div className="text-xs text-destructive mt-1">
+                      Error: {job.errorMessage}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2 ml-4">
+                  {job.status === 'failed' && (
+                    <Button
+                      onClick={() => handleRetry(job.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Retry
+                    </Button>
+                  )}
+                  {(job.status === 'queued' || job.status === 'failed') && (
+                    <Button
+                      onClick={() => handleCancel(job.id)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {jobs.length === 0 && stats && stats.totalJobs === 0 && (
+          <div className="text-center text-muted-foreground py-4">
+            No queued documents
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }

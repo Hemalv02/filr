@@ -13,8 +13,8 @@
 import type { ExtractedData } from "../lib/gemini";
 import type { FormData, SourceDocumentList } from "../lib/formExtraction";
 import { ProcessorChain, type ChainOptions } from "../lib/processors/ProcessorChain";
-import { extractFormData } from "../lib/formExtraction";
-import { extractDynamicData } from "../lib/dynamicExtraction";
+import { detectAndExtractForm } from "../lib/formExtraction";
+import { processDynamicDocuments } from "../lib/dynamicExtraction";
 import { executeAutoFill } from "../lib/formFiller";
 import type {
   DocumentUploadModel,
@@ -157,10 +157,8 @@ export class FormController {
         throw new Error("Failed to get page source");
       }
 
-      const htmlSource = results[0].result as string;
-
-      // Extract form data
-      const formData = await extractFormData(htmlSource, apiKey, model);
+      // Extract form data (detectAndExtractForm gets HTML source internally)
+      const formData = await detectAndExtractForm(apiKey);
 
       if (!formData || !formData.inputs || formData.inputs.length === 0) {
         return null;
@@ -202,14 +200,7 @@ export class FormController {
     model: string
   ): Promise<any> {
     try {
-      // Build field list from form data
-      const fields = formData.inputs.map(input => ({
-        id: input.input_field_id,
-        name: input.input_field_name,
-        label: input.label,
-      }));
-
-      const result = await extractDynamicData(files, fields, apiKey, model);
+      const result = await processDynamicDocuments(files, formData, apiKey, model);
       return result;
     } catch (error) {
       console.error("Dynamic extraction error:", error);

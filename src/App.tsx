@@ -260,6 +260,16 @@ export default function App() {
             transitionToPage("home");
           }
         }}
+        onConfirm={
+          // Only show confirm button if there's no form detection data
+          // (meaning user came from traditional form upload)
+          !stateContext.detectedFormData
+            ? (data) => {
+                stateManager.updateContext({ extractedData: data as ExtractedData });
+                transitionToPage("traditionalform");
+              }
+            : undefined
+        }
         detectedFormData={stateContext.detectedFormData}
         detectedSourceDocuments={stateContext.detectedSourceDocuments}
       />
@@ -304,6 +314,11 @@ export default function App() {
             stateManager.updateContext({ extractedData: data });
             transitionToPage("results");
           }}
+          onProcessComplete={(data) => {
+            stateManager.updateContext({ extractedData: data });
+            transitionToPage("results");
+          }}
+          initialData={stateManager.getContext().extractedData || undefined}
         />
       </>
     );

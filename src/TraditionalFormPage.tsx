@@ -2,17 +2,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Save, Upload, Sparkles, Loader2 } from "lucide-react";
+import { useRef, useState } from "react";
 import type { ExtractedData } from "./lib/gemini";
+import { processDocuments } from "./lib/gemini";
+import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 
 interface TraditionalFormPageProps {
   onBack: () => void;
   onSave: (data: ExtractedData) => void;
+  onProcessComplete: (data: ExtractedData) => void;
+  initialData?: Partial<ExtractedData>;
 }
 
-export default function TraditionalFormPage({ onBack, onSave }: TraditionalFormPageProps) {
-  const [data, setData] = useState<Partial<ExtractedData>>({
+export default function TraditionalFormPage({ onBack, onSave, onProcessComplete, initialData }: TraditionalFormPageProps) {
+  const [data, setData] = useState<Partial<ExtractedData>>(initialData || {
     name_english: "",
     name_bengali: "",
     father_name_english: "",
@@ -42,8 +46,113 @@ export default function TraditionalFormPage({ onBack, onSave }: TraditionalFormP
     driving_license_number: "",
   });
 
+  // Update form data when initialData changes (after coming back from Results)
+  useState(() => {
+    if (initialData) {
+      setData(initialData);
+    }
+  });
+  
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progressInfo, setProgressInfo] = useState<{
+    current: number;
+    total: number;
+    fileName: string;
+    status: string;
+  } | null>(null);
+
   const handleFieldChange = (field: keyof ExtractedData, value: string) => {
     setData({ ...data, [field]: value });
+  };
+
+  const handleUploadClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const apiKey = localStorage.getItem("gemini_api_key");
+    const model = localStorage.getItem("gemini_model") || "Gemini 2.0 Flash";
+
+    if (!apiKey) {
+      alert("Please set your Gemini API key in settings first!");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      setProgressInfo({ current: 0, total: files.length, fileName: "", status: "Starting..." });
+
+      // Convert FileList to array
+      const fileArray = Array.from(files);
+
+      console.log("🔵 Starting document processing...", {
+        fileCount: fileArray.length,
+        fileNames: fileArray.map(f => f.name),
+        apiKey: apiKey ? "✓ Set" : "✗ Missing",
+        model
+      });
+
+      // Process documents with progress callback (Observer Pattern)
+      const result = await processDocuments(fileArray, apiKey, model, (event: ProgressEvent) => {
+        console.log("📊 Progress event:", event);
+        // Update progress information
+        setProgressInfo({
+          current: event.current,
+          total: event.total,
+          fileName: event.fileName,
+          status: event.status === "uploading" ? "Uploading" :
+                  event.status === "processing" ? "Processing" :
+                  event.status === "completed" ? "Completed" : "Error",
+        });
+      });
+
+      console.log("✅ Processing complete! Result:", result);
+
+      // Check if we got any data
+      const hasData = Object.values(result).some(value => value && value !== "");
+      console.log("📋 Has data?", hasData, "Data keys:", Object.keys(result));
+
+      // Navigate to Results page with extracted data
+      setProgressInfo(null);
+      setIsProcessing(false);
+      
+      if (!hasData) {
+        alert("⚠️ No data was extracted from the documents.\n\n" +
+              "This could be because:\n" +
+              "1. You've exceeded your Gemini API quota (check console for errors)\n" +
+              "2. The documents are not readable\n" +
+              "3. The API key is invalid\n\n" +
+              "Check the browser console (F12) for detailed error messages.");
+        return;
+      }
+      
+      onProcessComplete(result);
+    } catch (err) {
+      console.error("❌ Auto-fill error:", err);
+      console.error("❌ Error stack:", err instanceof Error ? err.stack : "N/A");
+      setProgressInfo(null);
+      
+      // Check if it's a quota error
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        alert("⚠️ API Quota Exceeded!\n\n" +
+              "You've exceeded your Gemini API quota.\n\n" +
+              "Solutions:\n" +
+              "• Wait 60 seconds and try again\n" +
+              "• Check usage: https://ai.dev/usage\n" +
+              "• Use a different API key\n" +
+              "• Try uploading fewer files at once");
+      } else {
+        alert(err instanceof Error ? err.message : "Failed to auto-fill from documents");
+      }
+    } finally {
+      setIsProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleSave = () => {
@@ -84,6 +193,51 @@ export default function TraditionalFormPage({ onBack, onSave }: TraditionalFormP
 
   return (
     <div className="h-screen w-full bg-background flex flex-col">
+      {/* Loading Modal - Observer Pattern Progress Display */}
+      {isProcessing && progressInfo && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+          <Card className="w-96">
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">Processing Documents</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {progressInfo.current} of {progressInfo.total} files
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="space-y-2">
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div 
+                      className="bg-primary h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(progressInfo.current / progressInfo.total) * 100}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{progressInfo.status}</span>
+                    <span>{Math.round((progressInfo.current / progressInfo.total) * 100)}%</span>
+                  </div>
+                </div>
+
+                {/* Current File */}
+                <div className="bg-muted rounded p-3">
+                  <p className="text-sm font-medium mb-1">Current file:</p>
+                  <p className="text-xs text-muted-foreground truncate">{progressInfo.fileName}</p>
+                </div>
+
+                <p className="text-xs text-center text-muted-foreground">
+                  Please wait while we extract information from your documents...
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex-shrink-0 p-4 border-b">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -93,10 +247,17 @@ export default function TraditionalFormPage({ onBack, onSave }: TraditionalFormP
             </Button>
             <h1 className="text-lg font-semibold">Update Your Information</h1>
           </div>
-          <Button onClick={handleSave} size="sm">
-            <Save className="w-4 h-4 mr-2" />
-            Save
-          </Button>
+          <div className="flex items-center gap-2">
+            <input ref={fileInputRef} type="file" accept="application/pdf,image/*" onChange={handleFileChange} className="hidden" multiple />
+            <Button onClick={handleUploadClick} size="sm" variant="outline" disabled={isProcessing}>
+              <Upload className="w-4 h-4 mr-2" />
+              {isProcessing ? "Processing..." : "Upload & Auto-Fill"}
+            </Button>
+            <Button onClick={handleSave} size="sm">
+              <Save className="w-4 h-4 mr-2" />
+              Save
+            </Button>
+          </div>
         </div>
       </div>
 

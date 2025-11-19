@@ -55,29 +55,22 @@ export function OfflineStatusIndicator() {
   return (
     <div className="fixed top-4 right-4 z-50">
       <div className="relative">
-        {/* Status Indicator Button */}
+        {/* Status Indicator - Just a colored dot */}
         <button
           onClick={() => setShowTooltip(!showTooltip)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full shadow-lg transition-all ${
+          className={`relative w-3 h-3 rounded-full shadow-lg transition-all hover:scale-125 ${
             isOnline
-              ? 'bg-green-500 hover:bg-green-600'
-              : 'bg-red-500 hover:bg-red-600 animate-pulse'
-          } text-white font-medium`}
+              ? 'bg-green-500'
+              : 'bg-red-500 animate-pulse'
+          }`}
+          title={isOnline ? 'Online' : 'Offline'}
         >
-          {isOnline ? (
-            <Wifi className="w-4 h-4" />
-          ) : (
-            <WifiOff className="w-4 h-4" />
-          )}
-          <span className="text-sm">
-            {isOnline ? 'Online' : 'Offline'}
-          </span>
+          {/* Badge for queued count */}
           {queuedCount > 0 && (
-            <span className="bg-white/30 px-2 py-0.5 rounded-full text-xs">
+            <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
               {queuedCount}
             </span>
           )}
-          <Info className="w-3 h-3 opacity-75" />
         </button>
 
         {/* Tooltip Card */}

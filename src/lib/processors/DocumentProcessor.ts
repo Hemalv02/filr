@@ -178,11 +178,15 @@ export abstract class DocumentProcessor {
     prompt: string,
     schema: any
   ): Promise<any> {
+    console.log("🔴 uploadAndExtract called for file:", file.name);
+    
     // Notify uploading
     if (this.notifier) {
       this.notifier.notifyUploading(file.name, this.currentIndex, this.totalFiles);
     }
 
+    console.log("🔴 Starting file upload to Gemini...");
+    
     // Upload file
     const arrayBuffer = await file.arrayBuffer();
     const blob = new Blob([arrayBuffer], { type: file.type });
@@ -192,13 +196,24 @@ export abstract class DocumentProcessor {
       config: { mimeType: file.type },
     });
 
+    console.log("🔴 File uploaded! URI:", uploadedFile.uri, "MimeType:", uploadedFile.mimeType);
+
     // Notify processing
     if (this.notifier) {
       this.notifier.notifyProcessing(file.name, this.currentIndex, this.totalFiles);
     }
 
+    // Enhance prompt to ensure JSON-only response
+    const enhancedPrompt = `${prompt}
+
+IMPORTANT: Return ONLY valid JSON matching the specified schema. Do not include any explanatory text, comments, or markdown before or after the JSON. The response will be parsed directly as code.`;
+
+    console.log("🔴 Calling Gemini API with model:", model);
+    console.log("🔴 Prompt:", enhancedPrompt);
+    console.log("🔴 Schema:", JSON.stringify(schema, null, 2));
+
     // Create content with file and prompt
-    const parts = [createPartFromUri(uploadedFile.uri, uploadedFile.mimeType), prompt];
+    const parts = [createPartFromUri(uploadedFile.uri, uploadedFile.mimeType), enhancedPrompt];
 
     // Call Gemini API
     const response = await ai.models.generateContent({
@@ -210,11 +225,19 @@ export abstract class DocumentProcessor {
       },
     });
 
+    console.log("🟣 Gemini API Response:", {
+      text: response.text,
+      raw: response,
+    });
+
     // Notify completed
     if (this.notifier) {
       this.notifier.notifyCompleted(file.name, this.currentIndex, this.totalFiles);
     }
 
-    return JSON.parse(response.text);
+    const parsed = JSON.parse(response.text || "{}");
+    console.log("🟣 Parsed JSON:", parsed);
+    
+    return parsed;
   }
 }

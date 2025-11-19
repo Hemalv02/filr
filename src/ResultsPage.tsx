@@ -12,11 +12,12 @@ import { executeAutoFill } from "./lib/formFiller";
 interface ResultsPageProps {
   data: ExtractedData | DynamicExtractedData;
   onBack: () => void;
+  onConfirm?: (data: ExtractedData | DynamicExtractedData) => void;
   detectedFormData?: FormData | null;
   detectedSourceDocuments?: SourceDocumentList | null;
 }
 
-export default function ResultsPage({ data: initialData, onBack, detectedFormData, detectedSourceDocuments }: ResultsPageProps) {
+export default function ResultsPage({ data: initialData, onBack, onConfirm, detectedFormData, detectedSourceDocuments }: ResultsPageProps) {
   const [data, setData] = useState<ExtractedData | DynamicExtractedData>(initialData);
   // Check if we have form data - if yes, always use dynamic mode
   const isDynamicData = !!detectedFormData;
@@ -98,16 +99,27 @@ export default function ResultsPage({ data: initialData, onBack, detectedFormDat
             </Button>
             <h1 className="text-lg font-semibold">Extracted Information</h1>
           </div>
-          {detectedFormData && detectedSourceDocuments && (
-            <Button
-              onClick={handleAutoFill}
-              disabled={isAutoFilling}
-              size="sm"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              {isAutoFilling ? "Filling..." : "Auto-Fill Form"}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {onConfirm && (
+              <Button
+                onClick={() => onConfirm(data)}
+                size="sm"
+                variant="default"
+              >
+                Confirm & Load
+              </Button>
+            )}
+            {detectedFormData && detectedSourceDocuments && (
+              <Button
+                onClick={handleAutoFill}
+                disabled={isAutoFilling}
+                size="sm"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                {isAutoFilling ? "Filling..." : "Auto-Fill Form"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

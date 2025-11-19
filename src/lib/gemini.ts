@@ -130,8 +130,12 @@ export async function processDocuments(
   model: string,
   onProgress?: (event: any) => void
 ): Promise<ExtractedData> {
+  console.log("🟢 processDocuments called", { fileCount: files.length, model });
+  
   // FACTORY PATTERN + CHAIN OF RESPONSIBILITY: Use ProcessorChain
   const { ProcessorChain } = await import("./processors/ProcessorChain");
+
+  console.log("🟢 ProcessorChain imported, creating optimized chain...");
 
   // Create optimized chain for files (uses Factory pattern internally)
   const chain = ProcessorChain.createOptimizedForFiles(files, {
@@ -140,17 +144,24 @@ export async function processDocuments(
     enableSanitization: true,
   });
 
+  console.log("🟢 Chain created, setting up observer...");
+
   // OBSERVER PATTERN: Subscribe to progress updates if callback provided
   if (onProgress) {
     chain.subscribe({
       onProgress: (event) => {
+        console.log("🟢 Progress event from chain:", event);
         onProgress(event);
       },
     });
   }
 
+  console.log("🟢 Starting chain.processDocuments...");
+
   // CHAIN OF RESPONSIBILITY: Process documents through the chain
   const result = await chain.processDocuments(files, apiKey, model);
+
+  console.log("🟢 Chain processing complete. Result:", result);
 
   // Log any errors but don't throw - return partial data
   if (result.errors.length > 0) {

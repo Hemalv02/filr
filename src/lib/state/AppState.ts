@@ -18,6 +18,7 @@ export type PageType =
   | "results"
   | "htmlsource"
   | "formdetection"
+  | "traditionalform"
   | "debug";
 
 // Context that holds application state data
@@ -74,7 +75,7 @@ export class HomeState extends BaseState {
 
   constructor() {
     super();
-    this.allowedTransitions = ["settings", "formdetection", "htmlsource", "debug"];
+    this.allowedTransitions = ["settings", "formdetection", "traditionalform", "htmlsource", "results", "debug"];
   }
 
   validate(context: StateContext): boolean {
@@ -222,6 +223,28 @@ export class HTMLSourceState extends BaseState {
   }
 }
 
+// TRADITIONAL FORM STATE
+export class TraditionalFormState extends BaseState {
+  readonly name: PageType = "traditionalform";
+
+  constructor() {
+    super();
+    this.allowedTransitions = ["home", "results"];
+  }
+
+  validate(context: StateContext): boolean {
+    // Traditional form doesn't require any pre-conditions
+    return true;
+  }
+
+  onEnter(context: StateContext): void {
+    super.onEnter(context);
+    // Clear any previous form detection data since this is manual entry
+    context.detectedFormData = null;
+    context.detectedSourceDocuments = null;
+  }
+}
+
 // DEBUG STATE
 export class DebugState extends BaseState {
   readonly name: PageType = "debug";
@@ -255,6 +278,7 @@ export class StateManager {
     this.registerState(new LoadingState());
     this.registerState(new ResultsState());
     this.registerState(new HTMLSourceState());
+    this.registerState(new TraditionalFormState());
     this.registerState(new DebugState());
 
     // Set initial state

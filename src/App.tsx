@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FileText, Settings } from "lucide-react";
+import { FileText, Settings, Scan, UserPen } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import UploadPage from "./UploadPage";
 import SettingsPage from "./SettingsPage";
@@ -8,6 +8,7 @@ import ProcessingScreen from "./ProcessingScreen";
 import ResultsPage from "./ResultsPage";
 import HTMLSourcePage from "./HTMLSourcePage";
 import FormDetectionPage from "./FormDetectionPage";
+import TraditionalFormPage from "./TraditionalFormPage";
 import DebugPage from "./DebugPage";
 import type { ExtractedData } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
@@ -152,7 +153,7 @@ export default function App() {
     stateManager.updateContext({ progressCallback: callback });
   };
 
-  const handleGetStarted = () => {
+  const handleDetectForm = () => {
     // Check if API key exists
     const apiKey = localStorage.getItem("gemini_api_key");
 
@@ -164,6 +165,11 @@ export default function App() {
 
     // Navigate to form detection page using state manager
     transitionToPage("formdetection");
+  };
+
+  const handleUpdateInfo = () => {
+    // Navigate to traditional form page for manual data entry
+    transitionToPage("traditionalform");
   };
 
   // Use stateContext.currentPage from state manager
@@ -246,9 +252,13 @@ export default function App() {
         <ResultsPage
         data={stateContext.extractedData}
         onBack={() => {
-          // Keep extracted data when going back - don't clear it
-          // User might want to add more documents or review uploads
-          transitionToPage("upload");
+          // If there's form detection data, go back to upload page
+          // Otherwise, go back to home (user came from traditional form or direct)
+          if (stateContext.detectedFormData) {
+            transitionToPage("upload");
+          } else {
+            transitionToPage("home");
+          }
         }}
         detectedFormData={stateContext.detectedFormData}
         detectedSourceDocuments={stateContext.detectedSourceDocuments}
@@ -280,6 +290,21 @@ export default function App() {
           transitionToPage("upload");
         }}
       />
+      </>
+    );
+  }
+
+  if (currentPage === "traditionalform") {
+    return (
+      <>
+        <OfflineStatusIndicator />
+        <TraditionalFormPage
+          onBack={() => transitionToPage("home")}
+          onSave={(data) => {
+            stateManager.updateContext({ extractedData: data });
+            transitionToPage("results");
+          }}
+        />
       </>
     );
   }
@@ -342,14 +367,24 @@ export default function App() {
           Upload your documents and let AI extract and auto-fill information for government applications.
         </p>
 
-        {/* CTA Button */}
+        {/* CTA Buttons */}
         <div className="pt-4 space-y-3">
           <Button
-            onClick={handleGetStarted}
+            onClick={handleDetectForm}
             className="w-full h-14 text-base font-medium"
             size="lg"
           >
-            Get Started
+            <Scan className="w-5 h-5 mr-2" />
+            Detect Form
+          </Button>
+          <Button
+            onClick={handleUpdateInfo}
+            className="w-full h-14 text-base font-medium"
+            size="lg"
+            variant="outline"
+          >
+            <UserPen className="w-5 h-5 mr-2" />
+            Update Info
           </Button>
           {/* Debug buttons hidden */}
         </div>

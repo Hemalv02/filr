@@ -12,10 +12,11 @@ interface TraditionalFormPageProps {
   onBack: () => void;
   onSave: (data: ExtractedData) => void;
   onProcessComplete: (data: ExtractedData) => void;
+  onToonImport?: (importedData: Partial<ExtractedData>, existingData: Partial<ExtractedData>) => void;
   initialData?: Partial<ExtractedData>;
 }
 
-export default function TraditionalFormPage({ onBack, onSave, onProcessComplete, initialData }: TraditionalFormPageProps) {
+export default function TraditionalFormPage({ onBack, onSave, onProcessComplete, onToonImport, initialData }: TraditionalFormPageProps) {
   const [data, setData] = useState<Partial<ExtractedData>>({
     name_english: "",
     name_bengali: "",
@@ -158,18 +159,19 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
         return;
       }
       
-      // Merge TOON data with existing form data directly (don't navigate to Results)
-      setData(prevData => {
-        const merged = { ...prevData };
+      // If onToonImport callback is provided, use the new confirmation flow
+      if (onToonImport) {
+        onToonImport(parsedData, data);
+      } else {
+        // Fallback: merge directly and show in results (old behavior)
+        const mergedData: Partial<ExtractedData> = { ...data };
         Object.entries(parsedData).forEach(([key, value]) => {
           if (value && value !== "" && value !== "undefined" && value !== "null") {
-            merged[key as keyof ExtractedData] = value;
+            mergedData[key as keyof ExtractedData] = value;
           }
         });
-        return merged;
-      });
-      
-      alert(`Successfully imported TOON data! ${Object.keys(parsedData).length} fields loaded.`);
+        onProcessComplete(mergedData as ExtractedData);
+      }
     } catch (err) {
       console.error("Error parsing TOON file:", err);
       alert("Failed to parse TOON file. Please check the file format.");

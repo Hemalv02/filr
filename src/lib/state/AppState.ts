@@ -19,6 +19,7 @@ export type PageType =
   | "htmlsource"
   | "formdetection"
   | "traditionalform"
+  | "toonconfirmation"
   | "debug";
 
 // Context that holds application state data
@@ -30,6 +31,8 @@ export interface StateContext {
   progressCallback: ((event: ProgressEvent) => void) | null;
   error: string | null;
   uploadedFiles: Map<string, File> | null; // Track uploaded files by document type
+  toonImportData?: Partial<ExtractedData> | null; // Data imported from TOON file
+  toonExistingData?: Partial<ExtractedData> | null; // Existing form data before TOON import
 }
 
 // State interface - all states must implement this
@@ -229,7 +232,7 @@ export class TraditionalFormState extends BaseState {
 
   constructor() {
     super();
-    this.allowedTransitions = ["home", "results"];
+    this.allowedTransitions = ["home", "results", "toonconfirmation"];
   }
 
   validate(context: StateContext): boolean {
@@ -259,6 +262,35 @@ export class DebugState extends BaseState {
   }
 }
 
+// TOON CONFIRMATION STATE
+export class ToonConfirmationState extends BaseState {
+  readonly name: PageType = "toonconfirmation";
+
+  constructor() {
+    super();
+    this.allowedTransitions = ["traditionalform"];
+  }
+
+  validate(context: StateContext): boolean {
+    // Must have both imported data and existing data
+    return !!(context.toonImportData);
+  }
+
+  onEnter(context: StateContext): void {
+    super.onEnter(context);
+    if (!this.validate(context)) {
+      console.error("Toon confirmation state entered without imported data!");
+    }
+  }
+
+  onExit(context: StateContext): void {
+    super.onExit(context);
+    // Clear TOON data when leaving confirmation
+    context.toonImportData = null;
+    context.toonExistingData = null;
+  }
+}
+
 /**
  * State Manager - Manages state transitions with validation
  */
@@ -279,6 +311,7 @@ export class StateManager {
     this.registerState(new ResultsState());
     this.registerState(new HTMLSourceState());
     this.registerState(new TraditionalFormState());
+    this.registerState(new ToonConfirmationState());
     this.registerState(new DebugState());
 
     // Set initial state

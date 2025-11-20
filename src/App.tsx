@@ -9,6 +9,7 @@ import ResultsPage from "./ResultsPage";
 import HTMLSourcePage from "./HTMLSourcePage";
 import FormDetectionPage from "./FormDetectionPage";
 import TraditionalFormPage from "./TraditionalFormPage";
+import { ToonConfirmationPage } from "./ToonConfirmationPage";
 import DebugPage from "./DebugPage";
 import type { ExtractedData } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
@@ -48,6 +49,8 @@ export default function App() {
     progressCallback: null,
     error: null,
     uploadedFiles: new Map<string, File>(),
+    toonImportData: null, // For TOON confirmation page
+    toonExistingData: null, // For TOON confirmation page
   });
 
   const stateManager = useMemo(() => new StateManager(stateContext), []);
@@ -253,16 +256,16 @@ export default function App() {
         data={stateContext.extractedData}
         onBack={() => {
           // If there's form detection data, go back to upload page
-          // Otherwise, go back to home (user came from traditional form or direct)
+          // Otherwise, go back to traditional form
           if (stateContext.detectedFormData) {
             transitionToPage("upload");
           } else {
-            transitionToPage("home");
+            transitionToPage("traditionalform");
           }
         }}
         onConfirm={
-          // Only show confirm button if there's no form detection data
-          // (meaning user came from traditional form upload)
+          // Show confirm button when there's no form detection data
+          // (meaning user came from traditional form - either manual save or TOON import)
           !stateContext.detectedFormData
             ? (data) => {
                 stateManager.updateContext({ extractedData: data as ExtractedData });
@@ -311,14 +314,57 @@ export default function App() {
         <TraditionalFormPage
           onBack={() => transitionToPage("home")}
           onSave={(data) => {
-            stateManager.updateContext({ extractedData: data });
+            stateManager.updateContext({ 
+              extractedData: data,
+              detectedFormData: null,
+              detectedSourceDocuments: null
+            });
             transitionToPage("results");
           }}
           onProcessComplete={(data) => {
-            stateManager.updateContext({ extractedData: data });
+            stateManager.updateContext({ 
+              extractedData: data,
+              detectedFormData: null,
+              detectedSourceDocuments: null
+            });
             transitionToPage("results");
           }}
+          onToonImport={(importedData: Partial<ExtractedData>, existingData: Partial<ExtractedData>) => {
+            stateManager.updateContext({
+              toonImportData: importedData,
+              toonExistingData: existingData,
+            });
+            transitionToPage("toonconfirmation");
+          }}
           initialData={stateManager.getContext().extractedData || undefined}
+        />
+      </>
+    );
+  }
+
+  if (currentPage === "toonconfirmation") {
+    const { toonImportData, toonExistingData } = stateManager.getContext();
+    return (
+      <>
+        <OfflineStatusIndicator />
+        <ToonConfirmationPage
+          importedData={toonImportData || {}}
+          existingData={toonExistingData || {}}
+          onConfirm={(mergedData) => {
+            stateManager.updateContext({ 
+              extractedData: mergedData as ExtractedData,
+              toonImportData: null,
+              toonExistingData: null,
+            });
+            transitionToPage("traditionalform");
+          }}
+          onCancel={() => {
+            stateManager.updateContext({
+              toonImportData: null,
+              toonExistingData: null,
+            });
+            transitionToPage("traditionalform");
+          }}
         />
       </>
     );

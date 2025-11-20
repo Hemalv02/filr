@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save, Upload, Sparkles, Loader2, Download, FileUp } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import type { ExtractedData } from "./lib/gemini";
 import { processDocuments } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
@@ -16,7 +16,7 @@ interface TraditionalFormPageProps {
 }
 
 export default function TraditionalFormPage({ onBack, onSave, onProcessComplete, initialData }: TraditionalFormPageProps) {
-  const [data, setData] = useState<Partial<ExtractedData>>(initialData || {
+  const [data, setData] = useState<Partial<ExtractedData>>({
     name_english: "",
     name_bengali: "",
     father_name_english: "",
@@ -47,11 +47,21 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
   });
 
   // Update form data when initialData changes (after coming back from Results)
-  useState(() => {
-    if (initialData) {
-      setData(initialData);
+  useEffect(() => {
+    if (initialData && Object.keys(initialData).length > 0) {
+      // Merge initialData with existing data
+      setData(prevData => {
+        const merged = { ...prevData };
+        Object.entries(initialData).forEach(([key, value]) => {
+          // Only update if new value is not empty/null/undefined
+          if (value && value !== "" && value !== "undefined" && value !== "null") {
+            merged[key as keyof ExtractedData] = value;
+          }
+        });
+        return merged;
+      });
     }
-  });
+  }, [initialData]);
   
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const toonInputRef = useRef<HTMLInputElement | null>(null);
@@ -102,10 +112,14 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
             v.replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\').trim()
           );
           
-          // Map fields to values
+          // Map fields to values - ONLY add if value is not empty
           fields.forEach((field, index) => {
-            if (index < values.length && values[index]) {
-              parsedData[field.trim() as keyof ExtractedData] = values[index];
+            if (index < values.length) {
+              const value = values[index];
+              // Only add field if it has a non-empty value
+              if (value && value !== "" && value !== "undefined" && value !== "null") {
+                parsedData[field.trim() as keyof ExtractedData] = value;
+              }
             }
           });
         }
@@ -116,7 +130,10 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
         if (simpleMatch) {
           const key = simpleMatch[1];
           const value = simpleMatch[2].replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
-          parsedData[key as keyof ExtractedData] = value;
+          // Only add field if it has a non-empty value
+          if (value && value !== "" && value !== "undefined" && value !== "null") {
+            parsedData[key as keyof ExtractedData] = value;
+          }
         }
         i++;
       }
@@ -141,8 +158,18 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
         return;
       }
       
-      // Navigate to Results page with parsed data
-      onProcessComplete(parsedData as ExtractedData);
+      // Merge TOON data with existing form data directly (don't navigate to Results)
+      setData(prevData => {
+        const merged = { ...prevData };
+        Object.entries(parsedData).forEach(([key, value]) => {
+          if (value && value !== "" && value !== "undefined" && value !== "null") {
+            merged[key as keyof ExtractedData] = value;
+          }
+        });
+        return merged;
+      });
+      
+      alert(`Successfully imported TOON data! ${Object.keys(parsedData).length} fields loaded.`);
     } catch (err) {
       console.error("Error parsing TOON file:", err);
       alert("Failed to parse TOON file. Please check the file format.");

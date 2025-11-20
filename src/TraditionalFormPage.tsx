@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Upload, Sparkles, Loader2, Download } from "lucide-react";
+import { ArrowLeft, Save, Upload, Sparkles, Loader2, Download, FileUp } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ExtractedData } from "./lib/gemini";
 import { processDocuments } from "./lib/gemini";
@@ -69,6 +69,86 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
 
   const handleUploadClick = () => {
     if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleImportToonClick = () => {
+    if (toonInputRef.current) toonInputRef.current.click();
+  };
+
+  const parseTOON = (toonContent: string): Partial<ExtractedData> => {
+    const parsedData: Partial<ExtractedData> = {};
+    const lines = toonContent.trim().split('\n');
+    
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      
+      // Skip empty lines
+      if (!line) {
+        i++;
+        continue;
+      }
+      
+      // Check if line is a TOON array declaration: category[N]{fields}:
+      const arrayMatch = line.match(/^(\w+)\[(\d+)\]\{([^}]+)\}:\s*$/);
+      if (arrayMatch) {
+        const fields = arrayMatch[3].split(',');
+        i++; // Move to data line
+        
+        if (i < lines.length) {
+          const dataLine = lines[i].trim();
+          // Unescape TOON values
+          const values = dataLine.split(/(?<!\\),/).map(v => 
+            v.replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\').trim()
+          );
+          
+          // Map fields to values
+          fields.forEach((field, index) => {
+            if (index < values.length && values[index]) {
+              parsedData[field.trim() as keyof ExtractedData] = values[index];
+            }
+          });
+        }
+        i++;
+      } else {
+        // Simple key: value format
+        const simpleMatch = line.match(/^(\w+):\s*(.+)$/);
+        if (simpleMatch) {
+          const key = simpleMatch[1];
+          const value = simpleMatch[2].replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+          parsedData[key as keyof ExtractedData] = value;
+        }
+        i++;
+      }
+    }
+    
+    return parsedData;
+  };
+
+  const handleToonFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const parsedData = parseTOON(content);
+      
+      // Check if we got any data
+      const hasData = Object.values(parsedData).some(value => value && value !== "");
+      
+      if (!hasData) {
+        alert("No valid data found in the TOON file.");
+        return;
+      }
+      
+      // Navigate to Results page with parsed data
+      onProcessComplete(parsedData as ExtractedData);
+    } catch (err) {
+      console.error("Error parsing TOON file:", err);
+      alert("Failed to parse TOON file. Please check the file format.");
+    } finally {
+      if (toonInputRef.current) toonInputRef.current.value = "";
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,13 +421,18 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
           </div>
           <div className="flex items-center gap-2">
             <input ref={fileInputRef} type="file" accept="application/pdf,image/*" onChange={handleFileChange} className="hidden" multiple />
+            <input ref={toonInputRef} type="file" accept=".toon,text/plain" onChange={handleToonFileChange} className="hidden" />
             <Button onClick={handleUploadClick} size="sm" variant="outline" disabled={isProcessing}>
               <Upload className="w-4 h-4 mr-2" />
               {isProcessing ? "Processing..." : "Upload & Auto-Fill"}
             </Button>
+            <Button onClick={handleImportToonClick} size="sm" variant="outline">
+              <FileUp className="w-4 h-4 mr-2" />
+              Import TOON
+            </Button>
             <Button onClick={handleDownloadJSON} size="sm" variant="outline">
               <Download className="w-4 h-4 mr-2" />
-              Download TOML
+              Download TOON
             </Button>
             <Button onClick={handleSave} size="sm">
               <Save className="w-4 h-4 mr-2" />

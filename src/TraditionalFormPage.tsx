@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Upload, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Upload, Sparkles, Loader2, Download } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ExtractedData } from "./lib/gemini";
 import { processDocuments } from "./lib/gemini";
@@ -173,6 +173,45 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     onSave(filteredData as ExtractedData);
   };
 
+  const handleDownloadJSON = () => {
+    // Filter out empty fields
+    const filteredData = Object.entries(data).reduce((acc, [key, value]) => {
+      if (value && value.trim() !== "") {
+        acc[key as keyof ExtractedData] = value;
+      }
+      return acc;
+    }, {} as Partial<ExtractedData>);
+
+    // Check if there's data to download
+    if (Object.keys(filteredData).length === 0) {
+      alert("No data to download. Please fill in some fields first.");
+      return;
+    }
+
+    // Create JSON string with proper formatting
+    const jsonString = JSON.stringify(filteredData, null, 2);
+    
+    // Create blob and download link
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+    link.download = `form-data-${timestamp}.json`;
+    link.href = url;
+    
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    alert("JSON file downloaded successfully!");
+  };
+
   const renderField = (label: string, field: keyof ExtractedData, placeholder?: string) => {
     return (
       <div className="space-y-1.5">
@@ -252,6 +291,10 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
             <Button onClick={handleUploadClick} size="sm" variant="outline" disabled={isProcessing}>
               <Upload className="w-4 h-4 mr-2" />
               {isProcessing ? "Processing..." : "Upload & Auto-Fill"}
+            </Button>
+            <Button onClick={handleDownloadJSON} size="sm" variant="outline">
+              <Download className="w-4 h-4 mr-2" />
+              Download JSON
             </Button>
             <Button onClick={handleSave} size="sm">
               <Save className="w-4 h-4 mr-2" />

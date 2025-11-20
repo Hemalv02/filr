@@ -54,6 +54,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
   });
   
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const toonInputRef = useRef<HTMLInputElement | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressInfo, setProgressInfo] = useState<{
     current: number;
@@ -188,17 +189,69 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
       return;
     }
 
-    // Create JSON string with proper formatting
-    const jsonString = JSON.stringify(filteredData, null, 2);
+    // Convert to TOON format
+    let toonString = "";
+    
+    // Group fields by category for better organization
+    const categories = {
+      birth_certificate: [
+        'name_english', 'name_bengali', 'father_name_english', 'father_name_bengali',
+        'mother_name_english', 'mother_name_bengali', 'date_of_birth', 'birth_day',
+        'birth_month', 'birth_year', 'place_of_birth', 'birth_registration_number',
+        'sex', 'permanent_address'
+      ],
+      address: ['current_address', 'utility_account_number'],
+      education: [
+        'education_board', 'ssc_roll_number', 'ssc_registration_number',
+        'ssc_passing_year', 'institution_name'
+      ],
+      nid: ['parent_nid_number', 'parent_name', 'relation'],
+      other_ids: ['passport_number', 'tin_number', 'driving_license_number']
+    };
+
+    // Helper function to escape TOON values
+    const escapeTOON = (value: string): string => {
+      // Escape commas, newlines, and backslashes
+      if (value.includes(',') || value.includes('\n') || value.includes('\\')) {
+        return value.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+      }
+      return value;
+    };
+
+    // Process each category
+    Object.entries(categories).forEach(([categoryName, fields]) => {
+      const categoryData = fields
+        .filter(field => filteredData[field as keyof ExtractedData])
+        .map(field => ({
+          key: field,
+          value: String(filteredData[field as keyof ExtractedData])
+        }));
+
+      if (categoryData.length > 0) {
+        // Use TOON tabular format for arrays of objects
+        const fieldNames = categoryData.map(d => d.key).join(',');
+        const values = categoryData.map(d => escapeTOON(d.value)).join(',');
+        
+        toonString += `${categoryName}[${categoryData.length}]{${fieldNames}}:\n`;
+        toonString += `  ${values}\n`;
+      }
+    });
+
+    // If no categorized data, create a simple object notation
+    if (toonString === "") {
+      Object.entries(filteredData).forEach(([key, value]) => {
+        toonString += `${key}: ${escapeTOON(String(value))}\n`;
+      });
+    }
     
     // Create blob and download link
-    const blob = new Blob([jsonString], { type: "application/json" });
+    const blob = new Blob([toonString], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
-    link.download = `form-data-${timestamp}.json`;
+    link.download = `form-data-${timestamp}.toon`;
     link.href = url;
     
     // Trigger download
@@ -209,7 +262,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
-    alert("JSON file downloaded successfully!");
+    alert("TOON file downloaded successfully!");
   };
 
   const renderField = (label: string, field: keyof ExtractedData, placeholder?: string) => {
@@ -294,7 +347,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
             </Button>
             <Button onClick={handleDownloadJSON} size="sm" variant="outline">
               <Download className="w-4 h-4 mr-2" />
-              Download JSON
+              Download TOML
             </Button>
             <Button onClick={handleSave} size="sm">
               <Save className="w-4 h-4 mr-2" />

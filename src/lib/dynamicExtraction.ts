@@ -31,8 +31,25 @@ export async function processDynamicDocuments(
   const schemaProperties: Record<string, any> = {};
   const propertyOrdering: string[] = [];
 
-  formData.inputs.forEach((field) => {
-    const fieldKey = field.input_field_name || field.input_field_id;
+  formData.inputs.forEach((field, idx) => {
+    // Use field name, id, or fallback to label-based key
+    let fieldKey = field.input_field_name || field.input_field_id;
+
+    // If both are empty, create a key from the label
+    if (!fieldKey || fieldKey.trim() === '') {
+      // Convert label to snake_case as a fallback
+      fieldKey = field.label
+        .toLowerCase()
+        .replace(/[^\w\s]/g, '') // Remove special characters
+        .replace(/\s+/g, '_')     // Replace spaces with underscores
+        .trim();
+
+      // If still empty, use index-based key
+      if (!fieldKey) {
+        fieldKey = `field_${idx}`;
+      }
+    }
+
     schemaProperties[fieldKey] = { type: Type.STRING };
     propertyOrdering.push(fieldKey);
   });
@@ -46,7 +63,14 @@ export async function processDynamicDocuments(
   // Build field descriptions for the prompt
   const fieldDescriptions = formData.inputs
     .map((field, idx) => {
-      const fieldKey = field.input_field_name || field.input_field_id;
+      let fieldKey = field.input_field_name || field.input_field_id;
+      if (!fieldKey || fieldKey.trim() === '') {
+        fieldKey = field.label
+          .toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .replace(/\s+/g, '_')
+          .trim() || `field_${idx}`;
+      }
       return `${idx + 1}. "${fieldKey}": ${field.label}`;
     })
     .join('\n');
@@ -96,27 +120,53 @@ export async function processDynamicDocuments(
 
       // Build extraction prompt
       const prompt = `
-You are an expert data extraction assistant for government forms.
+You are an expert data extraction assistant for government forms. You must extract ALL relevant information from the document and intelligently map it to the form fields.
 
-FORM FIELDS TO EXTRACT:
+FORM FIELDS TO FILL:
 ${fieldDescriptions}
 
-INSTRUCTIONS:
-1. Extract data from the provided document that matches the form fields listed above
-2. Use the exact field names as keys (e.g., "name_bengali", "father_name", "d1", "m1", etc.)
-3. For fields not found in the document, return an empty string ""
-4. For date components (d1, d2, m1, m2, y1, y2, y3, y4):
-   - d1, d2: day digits (e.g., "2" and "8" for 28)
-   - m1, m2: month digits (e.g., "0" and "7" for 07)
-   - y1, y2, y3, y4: year digits (e.g., "2", "0", "0", "3" for 2003)
-5. For name fields:
-   - If field name contains "bengali": extract Bengali text
-   - If field name contains "english": extract English text
-   - Otherwise, provide the most appropriate version
-6. Extract addresses, NID numbers, phone numbers, and other relevant information
-7. Be thorough and accurate
+DOCUMENT ANALYSIS & MAPPING RULES:
 
-Please extract all available information from this document.
+1. **COMPREHENSIVE EXTRACTION**: Extract ALL information from the document, not just exact field name matches
+   - Birth certificates contain: name, date of birth, place of birth, parents' names, nationality, gender/sex, registration number
+   - NID cards contain: name, date of birth, NID number, address, blood group, nationality
+   - Passports contain: name, passport number, date of birth, nationality, date of issue/expiry
+   - Educational certificates contain: name, institution, roll number, registration number, passing year, results
+
+2. **INTELLIGENT FIELD MAPPING**: Map document data to form fields even if names don't match exactly
+   - "Sex" or "Gender" in document → "select_gender" field (values: Male, Female, Other)
+   - "Nationality" in document → "select_type_of_citizenship" or "select_country_of_birth" field
+   - "Religion" in document → "select_religion" field (values: Islam, Hinduism, Buddhism, Christianity, etc.)
+   - "Place of birth" or "District" → "select_district_of_birth" field
+   - "Date of birth" → "select_date_of_birth" field (format: DD MONTH YYYY, e.g., "28 JULY 2003")
+   - "Father's name" → fields containing "father"
+   - "Mother's name" → fields containing "mother"
+
+3. **NAME HANDLING**:
+   - For "Full name" fields: Provide complete name exactly as in document
+   - For "Given name" fields: Extract first/given name only
+   - For "Surname" fields: Extract last name/surname only
+   - If document has Bengali and English: match language appropriately
+
+4. **DATE HANDLING**:
+   - Convert dates to readable format: "28 JULY 2003" (not "28/07/2003")
+   - For date component fields (d1, d2, m1, m2, y1, y2, y3, y4): split into individual digits
+
+5. **ADDRESS & LOCATION**:
+   - Extract district names for birth district
+   - Match country names (Bangladesh, India, etc.)
+
+6. **PROFESSION & OCCUPATION**:
+   - If document mentions occupation, student status, or profession → "select_profession"
+   - Common values: Student, Service, Business, Agriculture, Housewife, etc.
+
+7. **RETURN EMPTY STRING** for fields where data is truly not available in the document
+
+8. **USE EXACT FIELD KEYS** as provided in the field list above
+
+CRITICAL: Look at the ENTIRE document and extract EVERY piece of relevant information. Don't leave fields empty if the information exists in the document under a different name.
+
+Extract all available data from this document now:
 `;
 
       // Convert model name to API format (e.g., "Gemini 2.5 Flash" -> "gemini-2.5-flash")

@@ -9,6 +9,14 @@ import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynami
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 import { getApiKey, getModel } from "./lib/storage";
+import { GoogleGenAI } from "@google/genai";
+import {
+  ExtractionContext,
+  selectStrategy,
+  StaticExtractionStrategy,
+  DynamicExtractionStrategy,
+  HybridExtractionStrategy,
+} from "./lib/strategies";
 
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
 
@@ -148,49 +156,40 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
         }
       });
 
-      // Process documents with Gemini - use dynamic extraction if form data is available
+      // STRATEGY PATTERN: Use appropriate extraction strategy
       let extractedData: ExtractedData | DynamicExtractedData;
 
-      if (detectedFormData) {
-        // Use dynamic extraction based on detected form fields
-        extractedData = await processDynamicDocuments(
-          uploadedFiles,
-          detectedFormData,
-          apiKey,
-          model || "gemini-2.5-flash",
-          (event) => {
-            // Convert dynamic progress to standard progress format
-            if ((window as any).__progressHandler) {
-              const status = event.stage === "upload" ? "uploading" as const :
-                            event.stage === "extract" ? "processing" as const :
-                            event.stage === "error" ? "error" as const :
-                            "completed" as const;
+      // Initialize AI client
+      const ai = new GoogleGenAI({ apiKey });
 
-              (window as any).__progressHandler({
-                fileName: event.documentName,
-                status,
-                current: event.currentDocument,
-                total: event.totalDocuments,
-                message: event.message,
-                error: event.stage === "error" ? event.message : undefined,
-              });
-            }
+      // Create strategy instances
+      const availableStrategies = [
+        new StaticExtractionStrategy(),
+        new DynamicExtractionStrategy(),
+        new HybridExtractionStrategy(),
+      ];
+
+      // Auto-select best strategy based on context
+      const selectedStrategy = selectStrategy(detectedFormData, availableStrategies);
+
+      console.log('[UploadPage] Using extraction strategy:', selectedStrategy.getName());
+
+      // Create extraction context with selected strategy
+      const extractionContext = new ExtractionContext(selectedStrategy);
+
+      // Execute extraction using the strategy
+      extractedData = await extractionContext.executeExtraction(
+        uploadedFiles,
+        ai,
+        model || "gemini-2.5-flash",
+        detectedFormData,
+        (event) => {
+          // Forward progress events
+          if ((window as any).__progressHandler) {
+            (window as any).__progressHandler(event);
           }
-        );
-      } else {
-        // Use static extraction for backwards compatibility
-        extractedData = await processDocuments(
-          uploadedFiles,
-          apiKey,
-          model || "Gemini 2.0 Flash",
-          (event) => {
-            // Forward progress events
-            if ((window as any).__progressHandler) {
-              (window as any).__progressHandler(event);
-            }
-          }
-        );
-      }
+        }
+      );
 
       // Show results
       onProcessComplete(extractedData as ExtractedData);

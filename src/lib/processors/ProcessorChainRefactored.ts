@@ -1,5 +1,18 @@
+/**
+ * Refactored ProcessorChain using Factory Pattern
+ *
+ * Before: Manually instantiated and chained processors
+ * After: Uses ProcessorFactory for creation and configuration
+ *
+ * Benefits:
+ * - Reduced coupling between ProcessorChain and concrete processors
+ * - Easier to add/remove processors
+ * - Centralized processor configuration
+ * - Better testability (can inject mock factory)
+ */
+
 import { GoogleGenAI } from "@google/genai";
-import { DocumentProcessor } from "./DocumentProcessor";
+import type { DocumentProcessor } from "./DocumentProcessor";
 import type { ExtractedData } from "../gemini";
 import { ProgressNotifier } from "../observers/ProcessingObserver";
 import type { ProcessingObserver } from "../observers/ProcessingObserver";
@@ -10,22 +23,22 @@ export interface ProcessingResult {
   errors: string[];
 }
 
-export class ProcessorChain {
+export class ProcessorChainRefactored {
   private chain: DocumentProcessor;
   private notifier: ProgressNotifier;
   private factory: ProcessorFactory;
 
   constructor(factory?: ProcessorFactory) {
-    // FACTORY PATTERN: Use factory to create processor chain
+    // Use dependency injection for factory (better for testing)
     this.factory = factory || ProcessorFactory.getInstance();
 
-    console.log('[ProcessorChain] Building chain using Factory pattern');
+    console.log('[ProcessorChain] Initializing with Factory pattern');
 
-    // Factory creates and chains all processors automatically
+    // Use factory to build the chain
     this.chain = this.factory.createProcessorChain();
     this.notifier = new ProgressNotifier();
 
-    console.log('[ProcessorChain] Chain built with processors:',
+    console.log('[ProcessorChain] Chain built successfully with processors:',
       this.factory.getAllProcessorMetadata().map(p => p.name).join(' → ')
     );
   }

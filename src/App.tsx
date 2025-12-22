@@ -183,43 +183,43 @@ export default function App() {
       <>
         <OfflineStatusIndicator />
         <UploadPage
-        documents={documents}
-        setDocuments={setDocuments}
-        onClearAll={clearAllDocuments}
-        onBack={() => {
-          // Clear form data when going back
-          stateManager.updateContext({
-            detectedFormData: null,
-            detectedSourceDocuments: null,
-          });
-          transitionToPage("home");
-        }}
-        onSettings={() => transitionToPage("settings")}
-        onProcessStart={() => transitionToPage("loading")}
-        onProcessComplete={(data) => {
-          stateManager.updateContext({ extractedData: data });
-          // Only transition if we're not already in results state
-          if (stateManager.getCurrentState() !== "results") {
-            transitionToPage("results");
-          }
-        }}
-        onProgressCallback={handleProgressCallback}
-        detectedFormData={stateContext.detectedFormData}
-        detectedSourceDocuments={stateContext.detectedSourceDocuments}
-        extractedData={stateContext.extractedData}
-        onViewResults={() => transitionToPage("results")}
-        uploadedFiles={stateContext.uploadedFiles}
-        onFileUpload={(type, file) => {
-          const newFiles = new Map(stateContext.uploadedFiles || new Map());
-          if (file) {
-            newFiles.set(type, file);
-          } else {
-            newFiles.delete(type);
-          }
-          stateManager.updateContext({ uploadedFiles: newFiles });
-          setStateContext({ ...stateManager.getContext() });
-        }}
-      />
+          documents={documents}
+          setDocuments={setDocuments}
+          onClearAll={clearAllDocuments}
+          onBack={() => {
+            // Clear form data when going back
+            stateManager.updateContext({
+              detectedFormData: null,
+              detectedSourceDocuments: null,
+            });
+            transitionToPage("home");
+          }}
+          onSettings={() => transitionToPage("settings")}
+          onProcessStart={() => transitionToPage("loading")}
+          onProcessComplete={(data) => {
+            stateManager.updateContext({ extractedData: data });
+            // Only transition if we're not already in results state
+            if (stateManager.getCurrentState() !== "results") {
+              transitionToPage("results");
+            }
+          }}
+          onProgressCallback={handleProgressCallback}
+          detectedFormData={stateContext.detectedFormData}
+          detectedSourceDocuments={stateContext.detectedSourceDocuments}
+          extractedData={stateContext.extractedData}
+          onViewResults={() => transitionToPage("results")}
+          uploadedFiles={stateContext.uploadedFiles}
+          onFileUpload={(type, file) => {
+            const newFiles = new Map(stateContext.uploadedFiles || new Map());
+            if (file) {
+              newFiles.set(type, file);
+            } else {
+              newFiles.delete(type);
+            }
+            stateManager.updateContext({ uploadedFiles: newFiles });
+            setStateContext({ ...stateManager.getContext() });
+          }}
+        />
       </>
     );
   }
@@ -238,12 +238,12 @@ export default function App() {
       <>
         <OfflineStatusIndicator />
         <ProcessingScreen
-        onProgress={(event) => {
-          if (progressCallbackRef.current) {
-            progressCallbackRef.current(event);
-          }
-        }}
-      />
+          onProgress={(event) => {
+            if (progressCallbackRef.current) {
+              progressCallbackRef.current(event);
+            }
+          }}
+        />
       </>
     );
   }
@@ -253,29 +253,29 @@ export default function App() {
       <>
         <OfflineStatusIndicator />
         <ResultsPage
-        data={stateContext.extractedData}
-        onBack={() => {
-          // If there's form detection data, go back to upload page
-          // Otherwise, go back to traditional form
-          if (stateContext.detectedFormData) {
-            transitionToPage("upload");
-          } else {
-            transitionToPage("traditionalform");
-          }
-        }}
-        onConfirm={
-          // Show confirm button when there's no form detection data
-          // (meaning user came from traditional form - either manual save or TOON import)
-          !stateContext.detectedFormData
-            ? (data) => {
+          data={stateContext.extractedData}
+          onBack={() => {
+            // If there's form detection data, go back to upload page
+            // Otherwise, go back to traditional form
+            if (stateContext.detectedFormData) {
+              transitionToPage("upload");
+            } else {
+              transitionToPage("traditionalform");
+            }
+          }}
+          onConfirm={
+            // Show confirm button when there's no form detection data
+            // (meaning user came from traditional form - either manual save or TOON import)
+            !stateContext.detectedFormData
+              ? (data) => {
                 stateManager.updateContext({ extractedData: data as ExtractedData });
                 transitionToPage("traditionalform");
               }
-            : undefined
-        }
-        detectedFormData={stateContext.detectedFormData}
-        detectedSourceDocuments={stateContext.detectedSourceDocuments}
-      />
+              : undefined
+          }
+          detectedFormData={stateContext.detectedFormData}
+          detectedSourceDocuments={stateContext.detectedSourceDocuments}
+        />
       </>
     );
   }
@@ -294,15 +294,15 @@ export default function App() {
       <>
         <OfflineStatusIndicator />
         <FormDetectionPage
-        onBack={() => transitionToPage("home")}
-        onContinueToUpload={(formData, sourceDocuments) => {
-          stateManager.updateContext({
-            detectedFormData: formData,
-            detectedSourceDocuments: sourceDocuments,
-          });
-          transitionToPage("upload");
-        }}
-      />
+          onBack={() => transitionToPage("home")}
+          onContinueToUpload={(formData, sourceDocuments) => {
+            stateManager.updateContext({
+              detectedFormData: formData,
+              detectedSourceDocuments: sourceDocuments,
+            });
+            transitionToPage("upload");
+          }}
+        />
       </>
     );
   }
@@ -314,7 +314,7 @@ export default function App() {
         <TraditionalFormPage
           onBack={() => transitionToPage("home")}
           onSave={(data) => {
-            stateManager.updateContext({ 
+            stateManager.updateContext({
               extractedData: data,
               detectedFormData: null,
               detectedSourceDocuments: null
@@ -322,7 +322,7 @@ export default function App() {
             transitionToPage("results");
           }}
           onProcessComplete={(data) => {
-            stateManager.updateContext({ 
+            stateManager.updateContext({
               extractedData: data,
               detectedFormData: null,
               detectedSourceDocuments: null
@@ -351,7 +351,7 @@ export default function App() {
           importedData={toonImportData || {}}
           existingData={toonExistingData || {}}
           onConfirm={(mergedData) => {
-            stateManager.updateContext({ 
+            stateManager.updateContext({
               extractedData: mergedData as ExtractedData,
               toonImportData: null,
               toonExistingData: null,
@@ -390,7 +390,7 @@ export default function App() {
       {/* Toast notifications for offline/online status */}
       <ToastContainer />
 
-      <div className="h-screen w-full bg-background flex items-center justify-center p-8">
+      <div className="h-screen w-full bg-background flex items-start justify-center p-8 pt-8">
         <div className="w-full max-w-lg space-y-10 text-center">
           {/* Offline Queue Status */}
           <QueueStatus />
@@ -406,56 +406,56 @@ export default function App() {
             </Button>
           </div>
 
-        {/* Logo/Icon */}
-        <div className="flex justify-center mb-8">
-          <div className="w-28 h-28 rounded-3xl bg-foreground flex items-center justify-center shadow-sm">
-            <FileText className="w-14 h-14 text-background" strokeWidth={2} />
+          {/* Logo/Icon */}
+          <div className="flex justify-center mb-8">
+            <div className="w-28 h-28 rounded-3xl bg-foreground flex items-center justify-center shadow-sm">
+              <FileText className="w-14 h-14 text-background" strokeWidth={2} />
+            </div>
           </div>
-        </div>
 
-        {/* Title */}
-        <div className="space-y-3">
-          <h1 className="text-5xl font-semibold tracking-tight">Filr</h1>
-          <p className="text-base text-muted-foreground">
-            Document Processing Extension
+          {/* Title */}
+          <div className="space-y-3">
+            <h1 className="text-5xl font-semibold tracking-tight">Filr</h1>
+            <p className="text-base text-muted-foreground">
+              Document Processing Extension
+            </p>
+          </div>
+
+          <Separator className="my-8" />
+
+          {/* Description */}
+          <p className="text-base text-muted-foreground px-4 leading-relaxed">
+            Upload your documents and let AI extract and auto-fill information for government applications.
+          </p>
+
+          {/* CTA Buttons */}
+          <div className="pt-4 space-y-3">
+            <Button
+              onClick={handleDetectForm}
+              className="w-full h-14 text-base font-medium"
+              size="lg"
+            >
+              <Scan className="w-5 h-5 mr-2" />
+              Detect Form
+            </Button>
+            <Button
+              onClick={handleUpdateInfo}
+              className="w-full h-14 text-base font-medium"
+              size="lg"
+              variant="outline"
+            >
+              <UserPen className="w-5 h-5 mr-2" />
+              Update Info
+            </Button>
+            {/* Debug buttons hidden */}
+          </div>
+
+          {/* Footer */}
+          <p className="text-sm text-muted-foreground pt-6">
+            Secure document processing with Gemini AI
           </p>
         </div>
-
-        <Separator className="my-8" />
-
-        {/* Description */}
-        <p className="text-base text-muted-foreground px-4 leading-relaxed">
-          Upload your documents and let AI extract and auto-fill information for government applications.
-        </p>
-
-        {/* CTA Buttons */}
-        <div className="pt-4 space-y-3">
-          <Button
-            onClick={handleDetectForm}
-            className="w-full h-14 text-base font-medium"
-            size="lg"
-          >
-            <Scan className="w-5 h-5 mr-2" />
-            Detect Form
-          </Button>
-          <Button
-            onClick={handleUpdateInfo}
-            className="w-full h-14 text-base font-medium"
-            size="lg"
-            variant="outline"
-          >
-            <UserPen className="w-5 h-5 mr-2" />
-            Update Info
-          </Button>
-          {/* Debug buttons hidden */}
-        </div>
-
-        {/* Footer */}
-        <p className="text-sm text-muted-foreground pt-6">
-          Secure document processing with Gemini AI
-        </p>
       </div>
-    </div>
     </>
   );
 }

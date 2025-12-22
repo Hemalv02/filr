@@ -63,7 +63,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
       });
     }
   }, [initialData]);
-  
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const toonInputRef = useRef<HTMLInputElement | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -89,30 +89,30 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
   const parseTOON = (toonContent: string): Partial<ExtractedData> => {
     const parsedData: Partial<ExtractedData> = {};
     const lines = toonContent.trim().split('\n');
-    
+
     let i = 0;
     while (i < lines.length) {
       const line = lines[i].trim();
-      
+
       // Skip empty lines
       if (!line) {
         i++;
         continue;
       }
-      
+
       // Check if line is a TOON array declaration: category[N]{fields}:
       const arrayMatch = line.match(/^(\w+)\[(\d+)\]\{([^}]+)\}:\s*$/);
       if (arrayMatch) {
         const fields = arrayMatch[3].split(',');
         i++; // Move to data line
-        
+
         if (i < lines.length) {
           const dataLine = lines[i].trim();
           // Unescape TOON values
-          const values = dataLine.split(/(?<!\\),/).map(v => 
+          const values = dataLine.split(/(?<!\\),/).map(v =>
             v.replace(/\\,/g, ',').replace(/\\n/g, '\n').replace(/\\\\/g, '\\').trim()
           );
-          
+
           // Map fields to values - ONLY add if value is not empty
           fields.forEach((field, index) => {
             if (index < values.length) {
@@ -139,7 +139,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
         i++;
       }
     }
-    
+
     return parsedData;
   };
 
@@ -150,15 +150,15 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     try {
       const content = await file.text();
       const parsedData = parseTOON(content);
-      
+
       // Check if we got any data
       const hasData = Object.values(parsedData).some(value => value && value !== "");
-      
+
       if (!hasData) {
         alert("No valid data found in the TOON file.");
         return;
       }
-      
+
       // If onToonImport callback is provided, use the new confirmation flow
       if (onToonImport) {
         onToonImport(parsedData, data);
@@ -215,8 +215,8 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
           total: event.total,
           fileName: event.fileName,
           status: event.status === "uploading" ? "Uploading" :
-                  event.status === "processing" ? "Processing" :
-                  event.status === "completed" ? "Completed" : "Error",
+            event.status === "processing" ? "Processing" :
+              event.status === "completed" ? "Completed" : "Error",
         });
       });
 
@@ -229,33 +229,33 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
       // Navigate to Results page with extracted data
       setProgressInfo(null);
       setIsProcessing(false);
-      
+
       if (!hasData) {
         alert("⚠️ No data was extracted from the documents.\n\n" +
-              "This could be because:\n" +
-              "1. You've exceeded your Gemini API quota (check console for errors)\n" +
-              "2. The documents are not readable\n" +
-              "3. The API key is invalid\n\n" +
-              "Check the browser console (F12) for detailed error messages.");
+          "This could be because:\n" +
+          "1. You've exceeded your Gemini API quota (check console for errors)\n" +
+          "2. The documents are not readable\n" +
+          "3. The API key is invalid\n\n" +
+          "Check the browser console (F12) for detailed error messages.");
         return;
       }
-      
+
       onProcessComplete(result);
     } catch (err) {
       console.error("❌ Auto-fill error:", err);
       console.error("❌ Error stack:", err instanceof Error ? err.stack : "N/A");
       setProgressInfo(null);
-      
+
       // Check if it's a quota error
       const errorMsg = err instanceof Error ? err.message : String(err);
       if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
         alert("⚠️ API Quota Exceeded!\n\n" +
-              "You've exceeded your Gemini API quota.\n\n" +
-              "Solutions:\n" +
-              "• Wait 60 seconds and try again\n" +
-              "• Check usage: https://ai.dev/usage\n" +
-              "• Use a different API key\n" +
-              "• Try uploading fewer files at once");
+          "You've exceeded your Gemini API quota.\n\n" +
+          "Solutions:\n" +
+          "• Wait 60 seconds and try again\n" +
+          "• Check usage: https://ai.dev/usage\n" +
+          "• Use a different API key\n" +
+          "• Try uploading fewer files at once");
       } else {
         alert(err instanceof Error ? err.message : "Failed to auto-fill from documents");
       }
@@ -300,7 +300,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
 
     // Convert to TOON format
     let toonString = "";
-    
+
     // Group fields by category for better organization
     const categories = {
       birth_certificate: [
@@ -340,7 +340,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
         // Use TOON tabular format for arrays of objects
         const fieldNames = categoryData.map(d => d.key).join(',');
         const values = categoryData.map(d => escapeTOON(d.value)).join(',');
-        
+
         toonString += `${categoryName}[${categoryData.length}]{${fieldNames}}:\n`;
         toonString += `  ${values}\n`;
       }
@@ -352,25 +352,25 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
         toonString += `${key}: ${escapeTOON(String(value))}\n`;
       });
     }
-    
+
     // Create blob and download link
     const blob = new Blob([toonString], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    
+
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
     link.download = `form-data-${timestamp}.toon`;
     link.href = url;
-    
+
     // Trigger download
     document.body.appendChild(link);
     link.click();
-    
+
     // Cleanup
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
+
     alert("TOON file downloaded successfully!");
   };
 
@@ -413,7 +413,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
                 {/* Progress Bar */}
                 <div className="space-y-2">
                   <div className="w-full bg-secondary rounded-full h-2">
-                    <div 
+                    <div
                       className="bg-primary h-2 rounded-full transition-all duration-300"
                       style={{ width: `${(progressInfo.current / progressInfo.total) * 100}%` }}
                     />
@@ -448,24 +448,24 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
             </Button>
             <h1 className="text-lg font-semibold">Update Your Information</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-4">
             <input ref={fileInputRef} type="file" accept="application/pdf,image/*" onChange={handleFileChange} className="hidden" multiple />
             <input ref={toonInputRef} type="file" accept=".toon,text/plain" onChange={handleToonFileChange} className="hidden" />
-            <Button onClick={handleUploadClick} size="sm" variant="outline" disabled={isProcessing}>
-              <Upload className="w-4 h-4 mr-2" />
-              {isProcessing ? "Processing..." : "Upload & Auto-Fill"}
+            <Button onClick={handleUploadClick} size="lg" variant="outline" disabled={isProcessing} className="flex flex-col gap-2 h-auto py-4">
+              <Upload className="w-5 h-5" />
+              <span className="text-xs">{isProcessing ? "Processing..." : "Upload & Auto-Fill"}</span>
             </Button>
-            <Button onClick={handleImportToonClick} size="sm" variant="outline">
-              <FileUp className="w-4 h-4 mr-2" />
-              Import TOON
+            <Button onClick={handleImportToonClick} size="lg" variant="outline" className="flex flex-col gap-2 h-auto py-4">
+              <FileUp className="w-5 h-5" />
+              <span className="text-xs">Import TOON</span>
             </Button>
-            <Button onClick={handleDownloadJSON} size="sm" variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              Download TOON
+            <Button onClick={handleDownloadJSON} size="lg" variant="outline" className="flex flex-col gap-2 h-auto py-4">
+              <Download className="w-5 h-5" />
+              <span className="text-xs">Download TOON</span>
             </Button>
-            <Button onClick={handleSave} size="sm">
-              <Save className="w-4 h-4 mr-2" />
-              Save
+            <Button onClick={handleSave} size="lg" className="flex flex-col gap-2 h-auto py-4">
+              <Save className="w-5 h-5" />
+              <span className="text-xs">Save</span>
             </Button>
           </div>
         </div>
@@ -487,7 +487,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
               {renderField("Mother's Name (English)", "mother_name_english")}
               {renderField("Mother's Name (Bengali)", "mother_name_bengali")}
               {renderField("Date of Birth", "date_of_birth", "DD/MM/YYYY")}
-              
+
               <div className="md:col-span-2">
                 <Label className="text-xs text-muted-foreground mb-1.5 block">Date Breakdown (Optional)</Label>
                 <div className="grid grid-cols-3 gap-3">

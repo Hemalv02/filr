@@ -7,6 +7,8 @@ import { useRef, useState, useEffect } from "react";
 import type { ExtractedData } from "./lib/gemini";
 import { processDocuments } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
+import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
+import { ToastContainer } from "./components/ToastContainer";
 
 interface TraditionalFormPageProps {
   onBack: () => void;
@@ -63,6 +65,27 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
       });
     }
   }, [initialData]);
+
+  // Load saved data from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedData = localStorage.getItem('filr_form_data');
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setData(prevData => {
+          const merged = { ...prevData };
+          Object.entries(parsedData).forEach(([key, value]) => {
+            if (value && value !== "" && value !== "undefined" && value !== "null") {
+              merged[key as keyof ExtractedData] = value as string;
+            }
+          });
+          return merged;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load saved data from localStorage:', error);
+    }
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const toonInputRef = useRef<HTMLInputElement | null>(null);
@@ -280,7 +303,22 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
       return;
     }
 
-    onSave(filteredData as ExtractedData);
+    // Save to localStorage
+    try {
+      localStorage.setItem('filr_form_data', JSON.stringify(filteredData));
+
+      // Show success notification
+      const notifications = OfflineNotifications.getInstance();
+      notifications.showToast({
+        type: 'success',
+        title: 'Saved successfully',
+        message: 'Your information has been saved locally.',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Failed to save to localStorage:', error);
+      alert('Failed to save data. Please try again.');
+    }
   };
 
   const handleDownloadJSON = () => {
@@ -393,213 +431,218 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
   };
 
   return (
-    <div className="h-screen w-full bg-background flex flex-col">
-      {/* Loading Modal - Observer Pattern Progress Display */}
-      {isProcessing && progressInfo && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-          <Card className="w-96">
-            <CardContent className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg">Processing Documents</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {progressInfo.current} of {progressInfo.total} files
-                    </p>
+    <>
+      {/* Toast notifications */}
+      <ToastContainer />
+
+      <div className="h-screen w-full bg-background flex flex-col">
+        {/* Loading Modal - Observer Pattern Progress Display */}
+        {isProcessing && progressInfo && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+            <Card className="w-96">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg">Processing Documents</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {progressInfo.current} of {progressInfo.total} files
+                      </p>
+                    </div>
                   </div>
-                </div>
 
-                {/* Progress Bar */}
-                <div className="space-y-2">
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div
-                      className="bg-primary h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(progressInfo.current / progressInfo.total) * 100}%` }}
-                    />
+                  {/* Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(progressInfo.current / progressInfo.total) * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{progressInfo.status}</span>
+                      <span>{Math.round((progressInfo.current / progressInfo.total) * 100)}%</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{progressInfo.status}</span>
-                    <span>{Math.round((progressInfo.current / progressInfo.total) * 100)}%</span>
+
+                  {/* Current File */}
+                  <div className="bg-muted rounded p-3">
+                    <p className="text-sm font-medium mb-1">Current file:</p>
+                    <p className="text-xs text-muted-foreground truncate">{progressInfo.fileName}</p>
                   </div>
+
+                  <p className="text-xs text-center text-muted-foreground">
+                    Please wait while we extract information from your documents...
+                  </p>
                 </div>
-
-                {/* Current File */}
-                <div className="bg-muted rounded p-3">
-                  <p className="text-sm font-medium mb-1">Current file:</p>
-                  <p className="text-xs text-muted-foreground truncate">{progressInfo.fileName}</p>
-                </div>
-
-                <p className="text-xs text-center text-muted-foreground">
-                  Please wait while we extract information from your documents...
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex-shrink-0 p-4 border-b">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={onBack}>
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <h1 className="text-lg font-semibold">Update Your Information</h1>
+              </CardContent>
+            </Card>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <input ref={fileInputRef} type="file" accept="application/pdf,image/*" onChange={handleFileChange} className="hidden" multiple />
-            <input ref={toonInputRef} type="file" accept=".toon,text/plain" onChange={handleToonFileChange} className="hidden" />
-            <Button onClick={handleUploadClick} size="lg" variant="outline" disabled={isProcessing} className="flex flex-col gap-2 h-auto py-4">
-              <Upload className="w-5 h-5" />
-              <span className="text-xs">{isProcessing ? "Processing..." : "Upload & Auto-Fill"}</span>
+        )}
+
+        {/* Header */}
+        <div className="flex-shrink-0 p-4 border-b">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={onBack}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <h1 className="text-lg font-semibold">Update Your Information</h1>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <input ref={fileInputRef} type="file" accept="application/pdf,image/*" onChange={handleFileChange} className="hidden" multiple />
+              <input ref={toonInputRef} type="file" accept=".toon,text/plain" onChange={handleToonFileChange} className="hidden" />
+              <Button onClick={handleUploadClick} size="lg" variant="outline" disabled={isProcessing} className="flex flex-col gap-2 h-auto py-4">
+                <Upload className="w-5 h-5" />
+                <span className="text-xs">{isProcessing ? "Processing..." : "Upload & Auto-Fill"}</span>
+              </Button>
+              <Button onClick={handleImportToonClick} size="lg" variant="outline" className="flex flex-col gap-2 h-auto py-4">
+                <FileUp className="w-5 h-5" />
+                <span className="text-xs">Import TOON</span>
+              </Button>
+              <Button onClick={handleDownloadJSON} size="lg" variant="outline" className="flex flex-col gap-2 h-auto py-4">
+                <Download className="w-5 h-5" />
+                <span className="text-xs">Download TOON</span>
+              </Button>
+              <Button onClick={handleSave} size="lg" className="flex flex-col gap-2 h-auto py-4">
+                <Save className="w-5 h-5" />
+                <span className="text-xs">Save</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {/* Birth Certificate Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Birth Certificate Information</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderField("Name (English)", "name_english", "Full name in English")}
+                {renderField("Name (Bengali)", "name_bengali", "Full name in Bengali")}
+                {renderField("Father's Name (English)", "father_name_english")}
+                {renderField("Father's Name (Bengali)", "father_name_bengali")}
+                {renderField("Mother's Name (English)", "mother_name_english")}
+                {renderField("Mother's Name (Bengali)", "mother_name_bengali")}
+                {renderField("Date of Birth", "date_of_birth", "DD/MM/YYYY")}
+
+                <div className="md:col-span-2">
+                  <Label className="text-xs text-muted-foreground mb-1.5 block">Date Breakdown (Optional)</Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label htmlFor="birth_day" className="text-xs">Day</Label>
+                      <Input
+                        id="birth_day"
+                        type="text"
+                        value={data.birth_day || ""}
+                        onChange={(e) => handleFieldChange("birth_day", e.target.value)}
+                        placeholder="DD"
+                        maxLength={2}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="birth_month" className="text-xs">Month</Label>
+                      <Input
+                        id="birth_month"
+                        type="text"
+                        value={data.birth_month || ""}
+                        onChange={(e) => handleFieldChange("birth_month", e.target.value)}
+                        placeholder="MM"
+                        maxLength={2}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="birth_year" className="text-xs">Year</Label>
+                      <Input
+                        id="birth_year"
+                        type="text"
+                        value={data.birth_year || ""}
+                        onChange={(e) => handleFieldChange("birth_year", e.target.value)}
+                        placeholder="YYYY"
+                        maxLength={4}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {renderField("Place of Birth", "place_of_birth")}
+                {renderField("Birth Registration Number", "birth_registration_number")}
+                {renderField("Sex", "sex", "Male/Female")}
+                {renderField("Permanent Address", "permanent_address")}
+              </CardContent>
+            </Card>
+
+            {/* Address & Utility Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Address & Utility Information</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderField("Current Address", "current_address")}
+                {renderField("Utility Account Number", "utility_account_number")}
+              </CardContent>
+            </Card>
+
+            {/* Education Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Education Information</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderField("Institution Name", "institution_name")}
+                {renderField("Education Board", "education_board")}
+                {renderField("SSC Roll Number", "ssc_roll_number")}
+                {renderField("SSC Registration Number", "ssc_registration_number")}
+                {renderField("Passing Year", "ssc_passing_year", "YYYY")}
+              </CardContent>
+            </Card>
+
+            {/* Parent/Spouse NID Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Parent/Spouse NID Information</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderField("Name", "parent_name")}
+                {renderField("NID Number", "parent_nid_number")}
+                {renderField("Relation", "relation", "Father/Mother/Spouse")}
+              </CardContent>
+            </Card>
+
+            {/* Other Identification */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Other Identification</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderField("Passport Number", "passport_number")}
+                {renderField("TIN Number", "tin_number")}
+                {renderField("Driving License Number", "driving_license_number")}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Footer Button */}
+        <div className="flex-shrink-0 p-4 border-t bg-background">
+          <div className="max-w-4xl mx-auto flex gap-3">
+            <Button onClick={onBack} variant="outline" className="flex-1">
+              Cancel
             </Button>
-            <Button onClick={handleImportToonClick} size="lg" variant="outline" className="flex flex-col gap-2 h-auto py-4">
-              <FileUp className="w-5 h-5" />
-              <span className="text-xs">Import TOON</span>
-            </Button>
-            <Button onClick={handleDownloadJSON} size="lg" variant="outline" className="flex flex-col gap-2 h-auto py-4">
-              <Download className="w-5 h-5" />
-              <span className="text-xs">Download TOON</span>
-            </Button>
-            <Button onClick={handleSave} size="lg" className="flex flex-col gap-2 h-auto py-4">
-              <Save className="w-5 h-5" />
-              <span className="text-xs">Save</span>
+            <Button onClick={handleSave} className="flex-1">
+              <Save className="w-4 h-4 mr-2" />
+              Save Information
             </Button>
           </div>
         </div>
       </div>
-
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-        <div className="max-w-4xl mx-auto space-y-4">
-          {/* Birth Certificate Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Birth Certificate Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderField("Name (English)", "name_english", "Full name in English")}
-              {renderField("Name (Bengali)", "name_bengali", "Full name in Bengali")}
-              {renderField("Father's Name (English)", "father_name_english")}
-              {renderField("Father's Name (Bengali)", "father_name_bengali")}
-              {renderField("Mother's Name (English)", "mother_name_english")}
-              {renderField("Mother's Name (Bengali)", "mother_name_bengali")}
-              {renderField("Date of Birth", "date_of_birth", "DD/MM/YYYY")}
-
-              <div className="md:col-span-2">
-                <Label className="text-xs text-muted-foreground mb-1.5 block">Date Breakdown (Optional)</Label>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label htmlFor="birth_day" className="text-xs">Day</Label>
-                    <Input
-                      id="birth_day"
-                      type="text"
-                      value={data.birth_day || ""}
-                      onChange={(e) => handleFieldChange("birth_day", e.target.value)}
-                      placeholder="DD"
-                      maxLength={2}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="birth_month" className="text-xs">Month</Label>
-                    <Input
-                      id="birth_month"
-                      type="text"
-                      value={data.birth_month || ""}
-                      onChange={(e) => handleFieldChange("birth_month", e.target.value)}
-                      placeholder="MM"
-                      maxLength={2}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="birth_year" className="text-xs">Year</Label>
-                    <Input
-                      id="birth_year"
-                      type="text"
-                      value={data.birth_year || ""}
-                      onChange={(e) => handleFieldChange("birth_year", e.target.value)}
-                      placeholder="YYYY"
-                      maxLength={4}
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {renderField("Place of Birth", "place_of_birth")}
-              {renderField("Birth Registration Number", "birth_registration_number")}
-              {renderField("Sex", "sex", "Male/Female")}
-              {renderField("Permanent Address", "permanent_address")}
-            </CardContent>
-          </Card>
-
-          {/* Address & Utility Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Address & Utility Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderField("Current Address", "current_address")}
-              {renderField("Utility Account Number", "utility_account_number")}
-            </CardContent>
-          </Card>
-
-          {/* Education Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Education Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderField("Institution Name", "institution_name")}
-              {renderField("Education Board", "education_board")}
-              {renderField("SSC Roll Number", "ssc_roll_number")}
-              {renderField("SSC Registration Number", "ssc_registration_number")}
-              {renderField("Passing Year", "ssc_passing_year", "YYYY")}
-            </CardContent>
-          </Card>
-
-          {/* Parent/Spouse NID Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Parent/Spouse NID Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderField("Name", "parent_name")}
-              {renderField("NID Number", "parent_nid_number")}
-              {renderField("Relation", "relation", "Father/Mother/Spouse")}
-            </CardContent>
-          </Card>
-
-          {/* Other Identification */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Other Identification</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {renderField("Passport Number", "passport_number")}
-              {renderField("TIN Number", "tin_number")}
-              {renderField("Driving License Number", "driving_license_number")}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Footer Button */}
-      <div className="flex-shrink-0 p-4 border-t bg-background">
-        <div className="max-w-4xl mx-auto flex gap-3">
-          <Button onClick={onBack} variant="outline" className="flex-1">
-            Cancel
-          </Button>
-          <Button onClick={handleSave} className="flex-1">
-            <Save className="w-4 h-4 mr-2" />
-            Save Information
-          </Button>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

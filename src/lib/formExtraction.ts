@@ -7,6 +7,7 @@ const inputFieldSchema = z.object({
   label: z.string().describe("Label name of the input field."),
   input_field_id: z.string().describe("Input field ID"),
   input_field_name: z.string().describe("Input field name"),
+  ref_id: z.string().optional().describe("Reference ID from accessibility tree (e.g., 'ref_1')"),
 });
 
 // Define the schema for the complete form structure
@@ -39,37 +40,57 @@ export type SourceDocument = z.infer<typeof sourceDocumentSchema>;
 export type SourceDocumentList = z.infer<typeof sourceDocumentListSchema>;
 
 /**
- * Get the HTML source code of the currently active tab
+ * Get the accessibility tree of the currently active tab
  */
-export async function getPageHTMLSource(): Promise<string> {
+export async function getPageAccessibilityTree(): Promise<string> {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 
   if (!tab || !tab.id) {
     throw new Error("No active tab found");
   }
 
-  const results = await browser.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: () => {
-      return document.documentElement.outerHTML;
-    },
+  // Send message to content script to generate accessibility tree
+  const response = await browser.tabs.sendMessage(tab.id, {
+    action: 'generateAccessibilityTree',
+    filter: 'all', // Include all elements for better context
+    depth: 15,
+    expandCustomSelects: true, // Expand custom selects to capture options
   });
 
-  if (!results || !results[0] || !results[0].result) {
-    throw new Error("Failed to retrieve HTML source");
+  if (!response || !response.success) {
+    throw new Error(response?.error || "Failed to generate accessibility tree");
   }
 
-  return results[0].result as string;
+  if (response.data.error) {
+    throw new Error(response.data.error);
+  }
+
+  const accessibilityTree = response.data.pageContent;
+  
+  // Log the full accessibility tree for debugging
+  console.log('=== ACCESSIBILITY TREE GENERATED ===');
+  console.log('Tree length:', accessibilityTree.length, 'characters');
+  console.log('Full accessibility tree:');
+  console.log(accessibilityTree);
+  console.log('=== END OF ACCESSIBILITY TREE ===');
+
+  return accessibilityTree;
 }
 
 /**
- * Extract form fields from HTML source using Gemini API
+ * Extract form fields from accessibility tree using Gemini API
  */
-export async function extractFormFields(htmlSource: string, apiKey: string): Promise<FormData> {
+export async function extractFormFields(accessibilityTree: string, apiKey: string): Promise<FormData> {
   const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
-You are analyzing a web page to determine if it contains a VALID FORM that collects user information.
+You are analyzing an accessibility tree representation of a web page to determine if it contains a VALID FORM that collects user information.
+
+The accessibility tree format is:
+- Each line represents an element: \`role "accessible_name" [ref_id]\`
+- Indentation shows parent-child relationships
+- ref_id (like [ref_1]) uniquely identifies each element
+- For combobox elements, child nodes (indented) represent available options
 
 IMPORTANT VALIDATION RULES:
 1. A valid form MUST have at least 3-4 input fields that collect user information
@@ -80,12 +101,18 @@ IMPORTANT VALIDATION RULES:
 
 If the page contains a valid form meeting these criteria, extract:
 - The form name/title
-- All input fields, select dropdowns, textareas with their associated labels, IDs, and names
+- All input fields, select dropdowns, textareas with:
+  - Label (from accessible_name in the tree)
+  - input_field_id (try to extract from ref_id or infer from label/name)
+  - input_field_name (try to extract from ref_id or infer from label/name)
+  - ref_id (the [ref_X] identifier from the tree - REQUIRED)
+
+IMPORTANT: You MUST include the ref_id for each field. Extract it from the tree format [ref_X].
 
 If NO valid form exists (fewer than 3 fields, or just scattered inputs), return an empty inputs array.
 
-HTML to analyze:
-${htmlSource}
+Accessibility tree to analyze:
+${accessibilityTree}
 `;
 
   const response = await ai.models.generateContent({
@@ -97,7 +124,11 @@ ${htmlSource}
     },
   });
 
-  const formData = inputFieldListSchema.parse(JSON.parse(response.text));
+  const responseText = response.text;
+  if (!responseText) {
+    throw new Error("Empty response from AI");
+  }
+  const formData = inputFieldListSchema.parse(JSON.parse(responseText));
 
   // Additional validation: Ensure minimum field count
   if (formData.inputs.length < 3) {
@@ -173,7 +204,11 @@ IMPORTANT:
     },
   });
 
-  const documentList = sourceDocumentListSchema.parse(JSON.parse(response.text));
+  const responseText = response.text;
+  if (!responseText) {
+    throw new Error("Empty response from AI");
+  }
+  const documentList = sourceDocumentListSchema.parse(JSON.parse(responseText));
   return documentList;
 }
 
@@ -181,7 +216,14 @@ IMPORTANT:
  * Main function to detect and extract form from the current page
  */
 export async function detectAndExtractForm(apiKey: string): Promise<FormData> {
-  const htmlSource = await getPageHTMLSource();
-  const formData = await extractFormFields(htmlSource, apiKey);
+  console.log('🔍 Starting form detection...');
+  const accessibilityTree = await getPageAccessibilityTree();
+  console.log('✅ Accessibility tree retrieved, extracting form fields...');
+  const formData = await extractFormFields(accessibilityTree, apiKey);
+  console.log('✅ Form extraction complete:', {
+    formName: formData.form_name,
+    fieldCount: formData.inputs.length,
+    fields: formData.inputs.map(f => ({ label: f.label, ref_id: f.ref_id }))
+  });
   return formData;
 }

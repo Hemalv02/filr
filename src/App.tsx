@@ -393,35 +393,35 @@ export default function App() {
       {/* Toast notifications for offline/online status */}
       <ToastContainer />
 
-      <div className="h-screen w-full bg-background flex items-center justify-center p-6 relative">
+      <div className="h-screen w-full bg-background flex items-center justify-center px-4 py-6 relative overflow-auto">
         {/* Settings Button - Fixed top-right */}
-        <div className="absolute top-4 right-4 z-40">
+        <div className="absolute top-3 right-3 z-40">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => transitionToPage("settings")}
-            className="h-9 w-9 hover:bg-accent/50 transition-colors"
+            className="h-8 w-8 hover:bg-accent/50 transition-colors"
             aria-label="Settings"
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="w-4 h-4" />
           </Button>
         </div>
 
-        <div className="w-full max-w-lg space-y-10 text-center">
+        <div className="w-full max-w-md mx-auto space-y-6 text-center px-2">
           {/* Logo/Icon */}
           <div className="flex justify-center">
             <div className="relative">
-              <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shadow-lg border border-border/50 backdrop-blur-sm">
-                <FileText className="w-14 h-14 text-primary" strokeWidth={1.5} />
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shadow-lg border border-border/50 backdrop-blur-sm">
+                <FileText className="w-10 h-10 text-primary" strokeWidth={1.5} />
               </div>
               {/* Decorative ring */}
-              <div className="absolute inset-0 rounded-3xl bg-primary/5 blur-xl -z-10"></div>
+              <div className="absolute inset-0 rounded-2xl bg-primary/5 blur-xl -z-10"></div>
             </div>
           </div>
 
           {/* Title */}
-          <div className="space-y-3">
-            <h1 className="text-5xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
               Filr
             </h1>
             <p className="text-sm text-muted-foreground font-medium">
@@ -429,18 +429,18 @@ export default function App() {
             </p>
           </div>
 
-          <Separator className="my-8 opacity-50" />
+          <Separator className="my-5 opacity-50" />
 
           {/* Description */}
-          <p className="text-sm text-muted-foreground px-8 leading-relaxed max-w-md mx-auto">
-            Extract data from your documents and automatically fill government forms. Save time with intelligent form detection and AI-powered data extraction.
+          <p className="text-sm text-muted-foreground px-2 leading-relaxed">
+            Extract data from documents and automatically fill government forms.
           </p>
 
           {/* CTA Buttons */}
-          <div className="pt-4 space-y-3 max-w-sm mx-auto">
+          <div className="pt-3 space-y-3">
             <Button
               onClick={handleDetectForm}
-              className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all duration-200"
+              className="w-full h-11 text-base font-semibold shadow-md hover:shadow-lg transition-all duration-200"
               size="lg"
             >
               <Scan className="w-5 h-5 mr-2" />
@@ -448,7 +448,7 @@ export default function App() {
             </Button>
             <Button
               onClick={handleUpdateInfo}
-              className="w-full h-12 text-base font-semibold border-2 hover:bg-accent/50 transition-all duration-200"
+              className="w-full h-11 text-base font-semibold border-2 hover:bg-accent/50 transition-all duration-200"
               size="lg"
               variant="outline"
             >
@@ -458,7 +458,7 @@ export default function App() {
           </div>
 
           {/* Footer */}
-          <div className="pt-8">
+          <div className="pt-3">
             <p className="text-xs text-muted-foreground/80">
               Powered by Gemini AI • Secure & Private
             </p>

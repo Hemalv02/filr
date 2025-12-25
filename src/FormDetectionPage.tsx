@@ -139,17 +139,17 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
   return (
     <div className="h-screen w-full bg-background flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <Button variant="ghost" size="icon" onClick={onBack}>
+      <div className="flex items-center justify-between px-3 py-2 border-b">
+        <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8">
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <h2 className="text-lg font-semibold">Form Detection</h2>
-        <div className="w-10" />
+        <h2 className="text-sm font-semibold">Form Detection</h2>
+        <div className="w-8" />
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto p-3">
+        <div className="space-y-3">
           {/* Resume Cache Dialog */}
           {showResumeDialog && cacheInfo && (
             <div className="flex flex-col items-center justify-center py-16 space-y-6">

@@ -149,8 +149,10 @@ ${accessibilityTree}
  */
 export async function detectRequiredDocuments(
   formData: FormData,
-  apiKey: string
+  apiKey: string,
+  onProgress?: (step: string) => void
 ): Promise<SourceDocumentList> {
+  onProgress?.("detecting_documents");
   const ai = new GoogleGenAI({ apiKey });
 
   // Extract field information
@@ -218,15 +220,27 @@ IMPORTANT:
 /**
  * Main function to detect and extract form from the current page
  */
-export async function detectAndExtractForm(apiKey: string): Promise<FormData> {
+export async function detectAndExtractForm(
+  apiKey: string,
+  onProgress?: (step: string) => void
+): Promise<FormData> {
   console.log('🔍 Starting form detection...');
+  
+  onProgress?.("generating_tree");
   const accessibilityTree = await getPageAccessibilityTree();
   console.log('✅ Accessibility tree retrieved, extracting form fields...');
+  
+  onProgress?.("detecting_form");
   const formData = await extractFormFields(accessibilityTree, apiKey);
   console.log('✅ Form extraction complete:', {
     formName: formData.form_name,
     fieldCount: formData.inputs.length,
     fields: formData.inputs.map(f => ({ label: f.label, ref_id: f.ref_id }))
   });
+  
+  onProgress?.("validating_form");
+  // Validation happens automatically in extractFormFields
+  // but we report it here for UI feedback
+  
   return formData;
 }

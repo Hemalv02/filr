@@ -103,11 +103,14 @@ If the page contains a valid form meeting these criteria, extract:
 - The form name/title
 - All input fields, select dropdowns, textareas with:
   - Label (from accessible_name in the tree)
-  - input_field_id (try to extract from ref_id or infer from label/name)
-  - input_field_name (try to extract from ref_id or infer from label/name)
-  - ref_id (the [ref_X] identifier from the tree - REQUIRED)
+  - input_field_id (try to extract from element attributes or infer from label/name)
+  - input_field_name (try to extract from element attributes or infer from label/name)
+  - ref_id (the [ref_X] identifier from the tree - PREFERRED but optional if not available)
 
-IMPORTANT: You MUST include the ref_id for each field. Extract it from the tree format [ref_X].
+IMPORTANT: 
+- Extract ref_id from the tree format [ref_X] when available - this enables more reliable form filling
+- If ref_id cannot be extracted, still provide input_field_id and input_field_name
+- Both approaches (with or without ref_id) are supported for backward compatibility
 
 If NO valid form exists (fewer than 3 fields, or just scattered inputs), return an empty inputs array.
 

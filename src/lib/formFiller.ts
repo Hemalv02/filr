@@ -2,11 +2,70 @@ import type { FormData } from "./formExtraction";
 import type { ExtractedData } from "./gemini";
 import type { DynamicExtractedData } from "./dynamicExtraction";
 
+// Type declarations for accessibility tree
+declare global {
+  interface Window {
+    __claudeElementMap?: Record<string, WeakRef<HTMLElement>>;
+    __claudeRefCounter?: number;
+  }
+}
+
+/**
+ * Find input element using ref_id from accessibility tree
+ * This is the most reliable method as it directly references the element
+ */
+function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+  // Check if __claudeElementMap exists
+  if (!window.__claudeElementMap) {
+    console.warn('__claudeElementMap not found - accessibility tree not initialized');
+    return null;
+  }
+
+  // Get WeakRef from map
+  const weakRef = window.__claudeElementMap[refId];
+  if (!weakRef) {
+    console.warn(`Ref ID ${refId} not found in element map`);
+    return null;
+  }
+
+  // Dereference WeakRef to get element
+  const element = weakRef.deref();
+  if (!element) {
+    console.warn(`Element for ref_id ${refId} was garbage collected or removed`);
+    return null;
+  }
+
+  // Verify it's an input element
+  if (element instanceof HTMLInputElement || 
+      element instanceof HTMLTextAreaElement || 
+      element instanceof HTMLSelectElement) {
+    return element;
+  }
+
+  console.warn(`Element for ref_id ${refId} is not an input element`);
+  return null;
+}
+
 /**
  * Find input element by various methods
+ * Priority: ref_id > fieldId > fieldName > case-insensitive search
  */
-function findInputElement(fieldId: string, fieldName: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
-  // Try by ID first
+function findInputElement(
+  fieldId: string, 
+  fieldName: string, 
+  refId?: string
+): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+  // PRIORITY 1: Try ref_id first (most reliable)
+  if (refId) {
+    const elementByRef = findInputElementByRefId(refId);
+    if (elementByRef) {
+      console.log(`  ✓ Found element via ref_id: ${refId}`);
+      return elementByRef;
+    }
+    console.log(`  ⚠️ ref_id ${refId} failed, falling back to ID/name lookup`);
+  }
+
+  // PRIORITY 2: Try by ID
   if (fieldId) {
     const byId = document.getElementById(fieldId);
     if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement)) {
@@ -14,7 +73,7 @@ function findInputElement(fieldId: string, fieldName: string): HTMLInputElement 
     }
   }
 
-  // Try by name attribute
+  // PRIORITY 3: Try by name attribute
   if (fieldName) {
     const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"]`);
     if (byName && (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement)) {
@@ -22,7 +81,7 @@ function findInputElement(fieldId: string, fieldName: string): HTMLInputElement 
     }
   }
 
-  // Try by ID as selector
+  // PRIORITY 4: Try by ID as selector
   if (fieldId) {
     const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"]`);
     if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement)) {
@@ -30,7 +89,7 @@ function findInputElement(fieldId: string, fieldName: string): HTMLInputElement 
     }
   }
 
-  // Try case-insensitive search
+  // PRIORITY 5: Try case-insensitive search
   if (fieldName) {
     const allInputs = document.querySelectorAll('input, textarea, select');
     for (const input of allInputs) {
@@ -107,23 +166,34 @@ export async function autoFillForm(
     const fieldId = field.input_field_id;
     const fieldName = field.input_field_name;
     const fieldLabel = field.label;
+    const refId = field.ref_id; // Get ref_id from field
 
     console.log(`\n--- Processing field: ${fieldLabel} ---`);
     console.log(`  ID: "${fieldId}"`);
     console.log(`  Name: "${fieldName}"`);
+    console.log(`  Ref ID: "${refId || 'N/A'}"`);
 
-    // Find the input element
-    const element = findInputElement(fieldId, fieldName);
+    // Find the input element (ref_id takes priority)
+    const element = findInputElement(fieldId, fieldName, refId);
 
     if (!element) {
-      const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName})`;
+      const refInfo = refId ? `, Ref ID: ${refId}` : '';
+      const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName}${refInfo})`;
       console.warn(msg);
       details.push(msg);
       failed++;
       continue;
     }
 
-    console.log(`  ✓ Element found:`, element);
+    // Log which method was used to find the element
+    let methodUsed = 'ID/name fallback';
+    if (refId) {
+      const elementByRef = findInputElementByRefId(refId);
+      if (elementByRef && elementByRef === element) {
+        methodUsed = 'ref_id';
+      }
+    }
+    console.log(`  ✓ Element found via ${methodUsed}:`, element);
 
     // Try to find matching value in extracted data
     let value: string | null = null;
@@ -230,8 +300,57 @@ export async function executeAutoFill(
     const results = await browser.scripting.executeScript({
       target: { tabId: tab.id },
       func: (formDataArg, extractedDataArg) => {
-        // Helper functions defined inline
-        function findInputElement(fieldId: string, fieldName: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+        // Helper function to find element by ref_id
+        function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+          // Check if __claudeElementMap exists
+          if (!window.__claudeElementMap) {
+            console.warn('__claudeElementMap not found - accessibility tree not initialized');
+            return null;
+          }
+
+          // Get WeakRef from map
+          const weakRef = window.__claudeElementMap[refId];
+          if (!weakRef) {
+            console.warn(`Ref ID ${refId} not found in element map`);
+            return null;
+          }
+
+          // Dereference WeakRef to get element
+          const element = weakRef.deref();
+          if (!element) {
+            console.warn(`Element for ref_id ${refId} was garbage collected or removed`);
+            return null;
+          }
+
+          // Verify it's an input element
+          if (element instanceof HTMLInputElement || 
+              element instanceof HTMLTextAreaElement || 
+              element instanceof HTMLSelectElement) {
+            return element;
+          }
+
+          console.warn(`Element for ref_id ${refId} is not an input element`);
+          return null;
+        }
+
+        // Helper function to find input element by various methods
+        // Priority: ref_id > fieldId > fieldName > case-insensitive search
+        function findInputElement(
+          fieldId: string, 
+          fieldName: string, 
+          refId?: string
+        ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+          // PRIORITY 1: Try ref_id first (most reliable)
+          if (refId) {
+            const elementByRef = findInputElementByRefId(refId);
+            if (elementByRef) {
+              console.log(`  ✓ Found element via ref_id: ${refId}`);
+              return elementByRef;
+            }
+            console.log(`  ⚠️ ref_id ${refId} failed, falling back to ID/name lookup`);
+          }
+
+          // PRIORITY 2: Try by ID
           if (fieldId) {
             const byId = document.getElementById(fieldId);
             if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement)) {
@@ -239,6 +358,7 @@ export async function executeAutoFill(
             }
           }
 
+          // PRIORITY 3: Try by name attribute
           if (fieldName) {
             const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"]`);
             if (byName && (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement)) {
@@ -246,6 +366,7 @@ export async function executeAutoFill(
             }
           }
 
+          // PRIORITY 4: Try by ID as selector
           if (fieldId) {
             const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"]`);
             if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement)) {
@@ -253,6 +374,7 @@ export async function executeAutoFill(
             }
           }
 
+          // PRIORITY 5: Try case-insensitive search
           if (fieldName) {
             const allInputs = document.querySelectorAll('input, textarea, select');
             for (const input of allInputs) {
@@ -465,16 +587,33 @@ export async function executeAutoFill(
           const fieldId = field.input_field_id;
           const fieldName = field.input_field_name;
           const fieldLabel = field.label;
+          const refId = field.ref_id; // Get ref_id from field
 
-          const element = findInputElement(fieldId, fieldName);
+          console.log(`\n--- Processing field: ${fieldLabel} ---`);
+          console.log(`  ID: "${fieldId}"`);
+          console.log(`  Name: "${fieldName}"`);
+          console.log(`  Ref ID: "${refId || 'N/A'}"`);
+
+          const element = findInputElement(fieldId, fieldName, refId);
 
           if (!element) {
-            const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName})`;
+            const refInfo = refId ? `, Ref ID: ${refId}` : '';
+            const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName}${refInfo})`;
             console.warn(msg);
             details.push(msg);
             failed++;
             continue;
           }
+
+          // Log which method was used to find the element
+          let methodUsed = 'ID/name fallback';
+          if (refId) {
+            const elementByRef = findInputElementByRefId(refId);
+            if (elementByRef && elementByRef === element) {
+              methodUsed = 'ref_id';
+            }
+          }
+          console.log(`  ✓ Element found via ${methodUsed}:`, element);
 
           let value: string | null = null;
           let matchMethod = '';

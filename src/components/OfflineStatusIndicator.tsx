@@ -53,7 +53,7 @@ export function OfflineStatusIndicator() {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50">
+    <div className="fixed top-4 left-4 z-50">
       <div className="relative">
         {/* Status Indicator - Just a colored dot */}
         <button
@@ -75,7 +75,7 @@ export function OfflineStatusIndicator() {
 
         {/* Tooltip Card */}
         {showTooltip && (
-          <Card className="absolute top-full right-0 mt-2 w-80 shadow-xl">
+          <Card className="absolute top-full left-0 mt-2 w-80 shadow-xl">
             <CardContent className="p-4 space-y-3">
               {isOnline ? (
                 <>

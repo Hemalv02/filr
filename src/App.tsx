@@ -21,10 +21,9 @@ import { NavigationController, SettingsController } from "./controllers/Document
 import type { DocumentUploadModel } from "./models/DocumentModel";
 
 // Offline Processing - Import Components
-import { QueueStatus } from "./components/QueueStatus";
 import { ToastContainer } from "./components/ToastContainer";
-import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
 import { OfflineStatusIndicator } from "./components/OfflineStatusIndicator";
+import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
 import { initializeOfflineProcessing } from "./lib/offline";
 
 // Use model type instead of local interface
@@ -161,7 +160,14 @@ export default function App() {
     const apiKey = localStorage.getItem("gemini_api_key");
 
     if (!apiKey) {
-      alert("Please set your Gemini API key in settings first!");
+      // Show toast notification instead of alert
+      const notifications = OfflineNotifications.getInstance();
+      notifications.showToast({
+        type: 'warning',
+        title: 'API Key Required',
+        message: 'Please configure your Gemini API key in settings first.',
+        duration: 4000,
+      });
       transitionToPage("settings");
       return;
     }
@@ -384,55 +390,57 @@ export default function App() {
       {/* Always-visible status indicator */}
       <OfflineStatusIndicator />
 
-      {/* Network status banner (shown when offline or syncing) */}
-      <NetworkStatusBanner />
-
       {/* Toast notifications for offline/online status */}
       <ToastContainer />
 
-      <div className="h-screen w-full bg-background flex items-start justify-center p-8 pt-8">
+      <div className="h-screen w-full bg-background flex items-center justify-center p-6 relative">
+        {/* Settings Button - Fixed top-right */}
+        <div className="absolute top-4 right-4 z-40">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => transitionToPage("settings")}
+            className="h-9 w-9 hover:bg-accent/50 transition-colors"
+            aria-label="Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </Button>
+        </div>
+
         <div className="w-full max-w-lg space-y-10 text-center">
-          {/* Offline Queue Status */}
-          <QueueStatus />
-
-          {/* Settings Button */}
-          <div className="flex justify-end">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => transitionToPage("settings")}
-            >
-              <Settings className="w-5 h-5" />
-            </Button>
-          </div>
-
           {/* Logo/Icon */}
-          <div className="flex justify-center mb-8">
-            <div className="w-28 h-28 rounded-3xl bg-foreground flex items-center justify-center shadow-sm">
-              <FileText className="w-14 h-14 text-background" strokeWidth={2} />
+          <div className="flex justify-center">
+            <div className="relative">
+              <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center shadow-lg border border-border/50 backdrop-blur-sm">
+                <FileText className="w-14 h-14 text-primary" strokeWidth={1.5} />
+              </div>
+              {/* Decorative ring */}
+              <div className="absolute inset-0 rounded-3xl bg-primary/5 blur-xl -z-10"></div>
             </div>
           </div>
 
           {/* Title */}
           <div className="space-y-3">
-            <h1 className="text-5xl font-semibold tracking-tight">Filr</h1>
-            <p className="text-base text-muted-foreground">
-              Document Processing Extension
+            <h1 className="text-5xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+              Filr
+            </h1>
+            <p className="text-sm text-muted-foreground font-medium">
+              AI-Powered Form Assistant
             </p>
           </div>
 
-          <Separator className="my-8" />
+          <Separator className="my-8 opacity-50" />
 
           {/* Description */}
-          <p className="text-base text-muted-foreground px-4 leading-relaxed">
-            Upload your documents and let AI extract and auto-fill information for government applications.
+          <p className="text-sm text-muted-foreground px-8 leading-relaxed max-w-md mx-auto">
+            Extract data from your documents and automatically fill government forms. Save time with intelligent form detection and AI-powered data extraction.
           </p>
 
           {/* CTA Buttons */}
-          <div className="pt-4 space-y-3">
+          <div className="pt-4 space-y-3 max-w-sm mx-auto">
             <Button
               onClick={handleDetectForm}
-              className="w-full h-14 text-base font-medium"
+              className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all duration-200"
               size="lg"
             >
               <Scan className="w-5 h-5 mr-2" />
@@ -440,20 +448,21 @@ export default function App() {
             </Button>
             <Button
               onClick={handleUpdateInfo}
-              className="w-full h-14 text-base font-medium"
+              className="w-full h-12 text-base font-semibold border-2 hover:bg-accent/50 transition-all duration-200"
               size="lg"
               variant="outline"
             >
               <UserPen className="w-5 h-5 mr-2" />
               Update Info
             </Button>
-            {/* Debug buttons hidden */}
           </div>
 
           {/* Footer */}
-          <p className="text-sm text-muted-foreground pt-6">
-            Secure document processing with Gemini AI
-          </p>
+          <div className="pt-8">
+            <p className="text-xs text-muted-foreground/80">
+              Powered by Gemini AI • Secure & Private
+            </p>
+          </div>
         </div>
       </div>
     </>

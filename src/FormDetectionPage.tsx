@@ -88,6 +88,10 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
   const handleStartNewDetection = () => {
     console.log('[FormDetection] User chose to start new detection');
     setShowResumeDialog(false);
+    // Clear all previous session data
+    setFormData(null);
+    setSourceDocuments(null);
+    setError(null);
     clearFormCache();
     startFreshDetection();
   };

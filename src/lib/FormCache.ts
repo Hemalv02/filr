@@ -175,7 +175,7 @@ export async function getCacheInfo(): Promise<{
     isCurrent,
     url: cached.url,
     cachedAt: new Date(cached.cachedAt),
-    formFieldCount: cached.formData.fields?.length || 0,
+    formFieldCount: cached.formData.inputs?.length || 0,
     documentCount: cached.sourceDocuments.source_documents?.length || 0,
   };
 }

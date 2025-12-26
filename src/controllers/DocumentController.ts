@@ -164,9 +164,16 @@ export class FormController {
         return null;
       }
 
+      // detectAndExtractForm returns FormData directly, not wrapped
+      // Source documents are extracted separately via detectSourceDocuments if needed
       return {
-        formData: formData.form_data,
-        sourceDocuments: formData.source_documents,
+        formData: formData,
+        sourceDocuments: {
+          form_type_english: "",
+          form_type_bangla: "",
+          source_documents: [],
+          additional_notes: "",
+        },
       };
     } catch (error) {
       console.error("Form detection error:", error);
@@ -197,10 +204,12 @@ export class FormController {
     formData: FormData,
     files: File[],
     apiKey: string,
-    model: string
+    model: string,
+    accessibilityTree?: string,
+    additionalContext?: string
   ): Promise<any> {
     try {
-      const result = await processDynamicDocuments(files, formData, apiKey, model);
+      const result = await processDynamicDocuments(files, formData, apiKey, model, accessibilityTree, additionalContext);
       return result;
     } catch (error) {
       console.error("Dynamic extraction error:", error);

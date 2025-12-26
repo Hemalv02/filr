@@ -1,8 +1,9 @@
-import { Loader2, CheckCircle2, Network, Search, CheckCircle, FileText, Save } from "lucide-react";
+import { Loader2, CheckCircle2, Network, Search, CheckCircle, FileText, Save, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type DetectionStep = 
   | "generating_tree"
+  | "capturing_screenshots"
   | "detecting_form" 
   | "validating_form"
   | "detecting_documents"
@@ -22,6 +23,12 @@ const steps: StepConfig[] = [
     label: "Generating Accessibility Tree",
     description: "Analyzing page structure...",
     icon: Network,
+  },
+  {
+    id: "capturing_screenshots",
+    label: "Capturing Screenshots",
+    description: "Taking page screenshots for visual context...",
+    icon: Camera,
   },
   {
     id: "detecting_form",

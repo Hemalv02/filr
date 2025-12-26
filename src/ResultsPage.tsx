@@ -2,12 +2,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { ArrowLeft, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import type { ExtractedData } from "./lib/gemini";
 import type { DynamicExtractedData } from "./lib/dynamicExtraction";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
 import { executeAutoFill } from "./lib/formFiller";
+import { ToastContainer } from "./components/ToastContainer";
+import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
 
 interface ResultsPageProps {
   data: ExtractedData | DynamicExtractedData;
@@ -25,13 +27,23 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
   const [autoFillResult, setAutoFillResult] = useState<{ filled: number; failed: number; details: string[] } | null>(null);
   const [showAutoFillDetails, setShowAutoFillDetails] = useState(false);
 
+  const showToast = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    const notifications = OfflineNotifications.getInstance();
+    notifications.showToast({
+      type,
+      title,
+      message,
+      duration: type === 'error' ? 5000 : 3000,
+    });
+  };
+
   const handleFieldChange = (field: keyof ExtractedData, value: string | number) => {
     setData({ ...data, [field]: value });
   };
 
   const handleAutoFill = async () => {
     if (!detectedFormData) {
-      alert("No form data available. Please run form detection first.");
+      showToast('error', 'Auto-Fill Failed', 'No form data available. Please run form detection first.');
       return;
     }
 
@@ -46,7 +58,31 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
     console.log("Available Data Keys:", Object.keys(data));
 
     try {
-      const result = await executeAutoFill(detectedFormData, data);
+      // IMPORTANT: Regenerate accessibility tree if stale (e.g., after page reload)
+      // This ensures ref_ids are valid and form filling works correctly
+      showToast('info', 'Preparing Form Fill', 'Refreshing form structure...');
+
+      try {
+        // Get current tab
+        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+        if (tab && tab.id) {
+          // Send message to content script to regenerate accessibility tree
+          console.log('[AutoFill] Regenerating accessibility tree...');
+          await browser.tabs.sendMessage(tab.id, {
+            action: 'generateAccessibilityTree',
+            filter: 'all',
+            depth: 15,
+            expandCustomSelects: true,
+          });
+          console.log('[AutoFill] Accessibility tree regenerated successfully');
+        }
+      } catch (treeError) {
+        console.warn('[AutoFill] Failed to regenerate tree, will use ID/name fallback:', treeError);
+        // Continue anyway - fallback to ID/name should work
+      }
+
+      const result = await executeAutoFill(detectedFormData, data, '');
       setAutoFillResult(result);
       setShowAutoFillDetails(true);
 
@@ -56,13 +92,25 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
       console.log("Details:", result.details);
 
       if (result.filled > 0) {
-        alert(`Successfully filled ${result.filled} field(s)! ${result.failed > 0 ? `Failed: ${result.failed}` : ''}`);
+        showToast(
+          'success',
+          'Auto-Fill Successful',
+          `Successfully filled ${result.filled} field(s)${result.failed > 0 ? `. ${result.failed} field(s) failed.` : '.'}`
+        );
       } else {
-        alert(`Could not fill any fields. Please check the console and details below.`);
+        showToast(
+          'warning',
+          'Auto-Fill Failed',
+          'Could not fill any fields. Please check the details below.'
+        );
       }
     } catch (error) {
       console.error("=== AUTO-FILL ERROR ===", error);
-      alert(`Auto-fill failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      showToast(
+        'error',
+        'Auto-Fill Error',
+        error instanceof Error ? error.message : "Unknown error occurred"
+      );
     } finally {
       setIsAutoFilling(false);
     }
@@ -89,22 +137,23 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
   };
 
   return (
-    <div className="h-screen w-full bg-background flex flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 p-4 border-b">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={onBack}>
+    <>
+      <ToastContainer />
+      <div className="h-screen w-full bg-background flex flex-col">
+        {/* Mobile-First Header */}
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-background/95 backdrop-blur-sm sticky top-0 z-10">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Button variant="ghost" size="icon" onClick={onBack} className="h-10 w-10 -ml-2 flex-shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <h1 className="text-lg font-semibold">Extracted Information</h1>
+            <h1 className="text-base font-semibold truncate">Extracted Information</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {onConfirm && (
               <Button
                 onClick={() => onConfirm(data)}
-                size="sm"
                 variant="default"
+                className="h-9 text-xs px-3"
               >
                 Confirm & Load
               </Button>
@@ -113,28 +162,37 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
               <Button
                 onClick={handleAutoFill}
                 disabled={isAutoFilling}
-                size="sm"
+                className="h-9 text-xs px-3"
               >
-                <Sparkles className="w-4 h-4 mr-2" />
-                {isAutoFilling ? "Filling..." : "Auto-Fill Form"}
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                {isAutoFilling ? "Filling..." : "Auto-Fill"}
               </Button>
             )}
           </div>
         </div>
-      </div>
 
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
-        <div className="max-w-4xl mx-auto space-y-4">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-auto">
+          <div className="px-4 py-6 space-y-4 max-w-md mx-auto">
 
           {/* Auto-fill Result */}
           {showAutoFillDetails && autoFillResult && (
             <Card className="border-primary">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Sparkles className="w-4 h-4" />
-                  Auto-Fill Results
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Auto-Fill Results
+                  </CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowAutoFillDetails(false)}
+                    className="h-8 w-8 -mr-2"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -252,7 +310,7 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
                 <CardHeader>
                   <CardTitle className="text-base">Birth Certificate Information</CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <CardContent className="space-y-4">
                   {renderField("Name (English)", "name_english")}
                   {renderField("Name (Bengali)", "name_bengali")}
                   {renderField("Father's Name (English)", "father_name_english")}
@@ -261,7 +319,7 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
                   {renderField("Mother's Name (Bengali)", "mother_name_bengali")}
                   {renderField("Date of Birth", "date_of_birth")}
               {(data.birth_day || data.birth_month || data.birth_year) && (
-                <div className="md:col-span-2">
+                <div>
                   <Label className="text-xs text-muted-foreground mb-1.5 block">Date Breakdown</Label>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
@@ -316,7 +374,7 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
               <CardHeader>
                 <CardTitle className="text-base">Address & Utility Information</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
                 {renderField("Current Address", "current_address")}
                 {renderField("Utility Account Number", "utility_account_number")}
               </CardContent>
@@ -329,7 +387,7 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
               <CardHeader>
                 <CardTitle className="text-base">Education Information</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
                 {renderField("Institution Name", "institution_name")}
                 {renderField("Education Board", "education_board")}
                 {renderField("SSC Roll Number", "ssc_roll_number")}
@@ -345,7 +403,7 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
               <CardHeader>
                 <CardTitle className="text-base">Parent/Spouse NID Information</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <CardContent className="space-y-4">
                 {renderField("Name", "parent_name")}
                 {renderField("NID Number", "parent_nid_number")}
                 {renderField("Relation", "relation")}
@@ -359,7 +417,7 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
                   <CardHeader>
                     <CardTitle className="text-base">Other Identification</CardTitle>
                   </CardHeader>
-                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CardContent className="space-y-4">
                     {renderField("Passport Number", "passport_number")}
                     {renderField("TIN Number", "tin_number")}
                     {renderField("Driving License Number", "driving_license_number")}
@@ -371,14 +429,15 @@ export default function ResultsPage({ data: initialData, onBack, onConfirm, dete
         </div>
       </div>
 
-      {/* Footer Button */}
-      <div className="flex-shrink-0 p-4 border-t bg-background">
-        <div className="max-w-4xl mx-auto">
-          <Button onClick={onBack} className="w-full">
-            Back to Upload
-          </Button>
+        {/* Footer Button */}
+        <div className="flex-shrink-0 px-4 py-4 border-t bg-background">
+          <div className="max-w-md mx-auto">
+            <Button onClick={onBack} className="w-full h-11">
+              Back to Upload
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

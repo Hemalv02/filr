@@ -1,0 +1,1623 @@
+import type { FormData } from "./formExtraction";
+import type { ExtractedData } from "./gemini";
+import type { DynamicExtractedData } from "./dynamicExtraction";
+
+// Type declarations for accessibility tree
+declare global {
+  interface Window {
+    __claudeElementMap?: Record<string, WeakRef<HTMLElement>>;
+    __claudeRefCounter?: number;
+  }
+}
+
+/**
+ * Validate if accessibility tree element map is still valid
+ * Checks if ref_ids from form data still exist in the map
+ */
+function validateAccessibilityTree(formData: FormData): boolean {
+  // Check if map exists
+  if (!window.__claudeElementMap) {
+    console.log('[FormFiller] Accessibility tree map does not exist');
+    return false;
+  }
+
+  // Get ref_ids from form data
+  const refIds = formData.inputs
+    .filter(f => f.ref_id)
+    .map(f => f.ref_id!);
+
+  if (refIds.length === 0) {
+    // If no ref_ids, tree validation doesn't apply (using ID/name fallback)
+    console.log('[FormFiller] No ref_ids in form data, validation skipped');
+    return true; // Consider valid since we'll use fallback methods
+  }
+
+  // Check if at least some ref_ids are still valid
+  // Sample first few ref_ids for performance
+  const sampleSize = Math.min(3, refIds.length);
+  const validRefs = refIds
+    .slice(0, sampleSize)
+    .filter(refId => {
+      const weakRef = window.__claudeElementMap![refId];
+      if (!weakRef) {
+        return false;
+      }
+      const element = weakRef.deref();
+      return element !== undefined;
+    });
+
+  // If less than 50% of sampled refs are valid, tree is stale
+  const isValid = validRefs.length >= Math.ceil(sampleSize * 0.5);
+  
+  console.log(`[FormFiller] Accessibility tree validation: ${isValid ? 'VALID' : 'STALE'} (${validRefs.length}/${sampleSize} refs valid)`);
+  
+  return isValid;
+}
+
+/**
+ * Find input element using ref_id from accessibility tree
+ * This is the most reliable method as it directly references the element
+ */
+function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement | null {
+  // Check if __claudeElementMap exists
+  if (!window.__claudeElementMap) {
+    console.warn('__claudeElementMap not found - accessibility tree not initialized');
+    return null;
+  }
+
+  // Get WeakRef from map
+  const weakRef = window.__claudeElementMap[refId];
+  if (!weakRef) {
+    console.warn(`Ref ID ${refId} not found in element map`);
+    return null;
+  }
+
+  // Dereference WeakRef to get element
+  const element = weakRef.deref();
+  if (!element) {
+    console.warn(`Element for ref_id ${refId} was garbage collected or removed`);
+    return null;
+  }
+
+  // Verify it's an input element, button, or ng-select
+  if (element instanceof HTMLInputElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLButtonElement) {
+    return element;
+  }
+
+  // Also accept ng-select custom elements
+  if (element.tagName && element.tagName.toLowerCase() === 'ng-select') {
+    return element as any;
+  }
+
+  console.warn(`Element for ref_id ${refId} is not an input element, button, or ng-select`);
+  return null;
+}
+
+/**
+ * Find input element by various methods
+ * Priority: ref_id > fieldId > fieldName > case-insensitive search
+ * Also searches for button elements that act as custom inputs
+ */
+function findInputElement(
+  fieldId: string, 
+  fieldName: string, 
+  refId?: string
+): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement | null {
+  // PRIORITY 1: Try ref_id first (most reliable)
+  if (refId) {
+    const elementByRef = findInputElementByRefId(refId);
+    if (elementByRef) {
+      console.log(`  ✓ Found element via ref_id: ${refId}`);
+      return elementByRef;
+    }
+    console.log(`  ⚠️ ref_id ${refId} failed, falling back to ID/name lookup`);
+  }
+
+  // PRIORITY 2: Try by ID
+  if (fieldId) {
+    const byId = document.getElementById(fieldId);
+    if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement || byId instanceof HTMLButtonElement)) {
+      return byId;
+    }
+  }
+
+  // PRIORITY 3: Try by name attribute
+  if (fieldName) {
+    const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"], button[name="${fieldName}"]`);
+    if (byName && (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement || byName instanceof HTMLButtonElement)) {
+      return byName;
+    }
+  }
+
+  // PRIORITY 4: Try by ID as selector
+  if (fieldId) {
+    const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"], button[id="${fieldId}"]`);
+    if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement || bySelector instanceof HTMLButtonElement)) {
+      return bySelector;
+    }
+  }
+
+  // PRIORITY 5: Try case-insensitive search
+  if (fieldName) {
+    const allInputs = document.querySelectorAll('input, textarea, select, button');
+    for (const input of allInputs) {
+      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement || input instanceof HTMLButtonElement) {
+        const name = input.getAttribute('name')?.toLowerCase();
+        const id = input.getAttribute('id')?.toLowerCase();
+        if (name === fieldName.toLowerCase() || id === fieldName.toLowerCase()) {
+          return input;
+        }
+      }
+    }
+  }
+
+  // PRIORITY 6: For button groups, try to find by label text
+  // Look for labels that contain the field name, then find buttons in the same container
+  if (fieldName) {
+    const normalizedFieldName = fieldName.toLowerCase();
+    const labels = document.querySelectorAll('label');
+    for (const label of labels) {
+      const labelText = (label.textContent || label.innerText || '').toLowerCase();
+      if (labelText.includes(normalizedFieldName) || normalizedFieldName.includes(labelText)) {
+        // Find container (selectContainer, form-group, etc.)
+        const container = label.closest('.selectContainer, .form-group, .form-row') || label.parentElement;
+        if (container) {
+          // Return first button found in container (setInputValue will find the right one)
+          const firstButton = container.querySelector('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+          if (firstButton instanceof HTMLButtonElement) {
+            console.log(`  ✓ Found button group via label: ${labelText}`);
+            return firstButton;
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Handle ng-select (Angular custom dropdown)
+ * NOTE: Uses setTimeout callbacks to match working pattern
+ */
+function fillNgSelect(element: HTMLElement, value: string): boolean {
+  try {
+    console.log('  Attempting to fill ng-select with value:', value);
+
+    // Find the input inside ng-select
+    const input = element.querySelector('input');
+    if (!input) {
+      console.error('  No input found inside ng-select');
+      return false;
+    }
+
+    // Click to open the dropdown
+    const container = element.querySelector('.ng-select-container');
+    if (container) {
+      (container as HTMLElement).click();
+      console.log('  Clicked ng-select to open dropdown');
+    }
+
+    // Wait a bit for dropdown to open
+    setTimeout(() => {
+      // Type the value into the search input
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      console.log('  Typed value into ng-select search');
+
+      // Wait for options to filter
+      setTimeout(() => {
+        // Find matching options
+        const options = document.querySelectorAll('.ng-dropdown-panel .ng-option');
+        console.log(`  Found ${options.length} options`);
+
+        const normalizedValue = value.toLowerCase().trim();
+
+        for (const option of options) {
+          const optionText = option.textContent?.toLowerCase().trim() || '';
+          console.log(`  Checking option: "${optionText}"`);
+
+          if (optionText.includes(normalizedValue) || normalizedValue.includes(optionText)) {
+            console.log(`  ✓ Matched option: "${optionText}"`);
+            (option as HTMLElement).click();
+            return;
+          }
+        }
+
+        // If no exact match, try first option if available
+        if (options.length > 0) {
+          console.log('  Using first available option');
+          (options[0] as HTMLElement).click();
+        }
+      }, 200);
+    }, 200);
+
+    return true;
+  } catch (error) {
+    console.error('  Error setting ng-select value:', error);
+    return false;
+  }
+}
+    
+    // Also trigger on the input if it exists
+    if (input) {
+      input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    }
+
+    // 10. Close dropdown by clicking outside OR pressing Escape
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Method 1: Press Escape key to close dropdown (most reliable for ng-select)
+    if (input) {
+      input.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        keyCode: 27,
+        bubbles: true,
+        cancelable: true
+      }));
+      input.dispatchEvent(new KeyboardEvent('keyup', {
+        key: 'Escape',
+        code: 'Escape',
+        keyCode: 27,
+        bubbles: true,
+        cancelable: true
+      }));
+    }
+
+    // Method 2: Blur to close dropdown
+    if (clickableElement) {
+      clickableElement.blur();
+    }
+    element.blur();
+
+    // Method 3: Click outside to ensure dropdown closes (as backup)
+    await new Promise(resolve => setTimeout(resolve, 50));
+    if (document.body) {
+      const bodyRect = document.body.getBoundingClientRect();
+      document.body.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: bodyRect.left + 10,
+        clientY: bodyRect.top + 10
+      }));
+    }
+
+    // Verify selection was made
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const selectedValue = element.querySelector('.ng-value-label');
+    if (selectedValue) {
+      console.log(`✓ ng-select filled: "${value}" → Selected: "${selectedValue.textContent}"`);
+    } else {
+      console.log(`✓ ng-select filled: "${value}" (verification pending)`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error filling ng-select:', error);
+    return false;
+  }
+}
+
+/**
+ * Set value to input element with proper event triggering
+ * Handles buttons that act as custom inputs (like radio button groups)
+ */
+function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement, value: string): boolean {
+  try {
+    // Special handling for ng-select (Angular custom dropdown)
+    // Check if element is ng-select custom element or contains ng-select
+    const isNgSelect = element.tagName.toLowerCase() === 'ng-select' ||
+                      element.classList.contains('ng-select') ||
+                      (element.getAttribute('role') === 'combobox' && element.querySelector('.ng-select-container'));
+    
+    if (isNgSelect) {
+      // ng-select requires async handling, but we're in a sync function
+      // Handle the promise without blocking
+      fillNgSelect(element, value).then(success => {
+        if (success) {
+          console.log(`✓ ng-select filled successfully`);
+        } else {
+          console.warn('✗ ng-select filling failed');
+        }
+      }).catch(error => {
+        console.error('✗ ng-select error:', error);
+      });
+      return true;  // Return immediately, actual filling happens async
+    }
+
+    // Special handling for input[type="button"] - these should be clicked
+    if (element instanceof HTMLInputElement && element.type === 'button') {
+      console.log(`✓ Detected input[type="button"], will click it`);
+
+      // Focus the button
+      element.focus();
+
+      // Click the button
+      element.click();
+
+      // Also trigger events
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+      // Blur
+      element.blur();
+
+      console.log(`✓ Clicked input button: ${element.id || element.name}`);
+      return true;
+    }
+
+    // Special handling for button elements (custom inputs like sex buttons)
+    if (element instanceof HTMLButtonElement) {
+      // Normalize the value to match
+      const normalizedValue = value.toLowerCase().trim();
+      
+      // Try to find a button in the same container that matches the value
+      // Look for buttons with matching value attribute or text content
+      const container = element.closest('.selectContainer, .form-group, .form-row') || element.parentElement;
+      if (container) {
+        const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+        
+        for (const button of buttons) {
+          if (button instanceof HTMLButtonElement) {
+            const buttonValue = (button.value || '').toLowerCase().trim();
+            const buttonText = (button.textContent || button.innerText || '').toLowerCase().trim();
+            
+            // Check if this button matches the value
+            // Use EXACT matching to avoid "male" matching "fe-male"
+            let isMatch = false;
+
+            // Exact matches
+            if (buttonValue === normalizedValue || buttonText === normalizedValue) {
+              isMatch = true;
+            }
+            // Special case for gender - use EXACT matching only
+            else if (normalizedValue === 'male' || normalizedValue === 'm' || normalizedValue === 'পুরুষ') {
+              // Match male button exactly (not substring)
+              if (buttonValue === 'm' || buttonText === 'male' || buttonText === 'পুরুষ') {
+                isMatch = true;
+              }
+            }
+            else if (normalizedValue === 'female' || normalizedValue === 'f' || normalizedValue === 'মহিলা') {
+              // Match female button exactly (not substring)
+              if (buttonValue === 'f' || buttonText === 'female' || buttonText === 'মহিলা') {
+                isMatch = true;
+              }
+            }
+            // Other values can use partial matching (but only if >= 3 chars)
+            else if (normalizedValue.length >= 3 && (buttonText.includes(normalizedValue) || normalizedValue.includes(buttonText))) {
+              isMatch = true;
+            }
+
+            if (isMatch) {
+              
+              // Click the matching button
+              button.click();
+              
+              // Also trigger events
+              button.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+              button.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+              
+              console.log(`✓ Clicked button: ${button.id || button.className} = "${value}"`);
+              return true;
+            }
+          }
+        }
+      }
+      
+      // If no matching button found, try clicking this button if its value/text matches
+      const elementValue = (element.value || '').toLowerCase().trim();
+      const elementText = (element.textContent || element.innerText || '').toLowerCase().trim();
+
+      // Use exact matching only (no substring matching to avoid "male" matching "female")
+      let elementMatches = false;
+      if (elementValue === normalizedValue || elementText === normalizedValue) {
+        elementMatches = true;
+      }
+      // Special gender matching
+      else if ((normalizedValue === 'male' || normalizedValue === 'm' || normalizedValue === 'পুরুষ') &&
+               (elementValue === 'm' || elementText === 'male' || elementText === 'পুরুষ')) {
+        elementMatches = true;
+      }
+      else if ((normalizedValue === 'female' || normalizedValue === 'f' || normalizedValue === 'মহিলা') &&
+               (elementValue === 'f' || elementText === 'female' || elementText === 'মহিলা')) {
+        elementMatches = true;
+      }
+
+      if (elementMatches) {
+        element.click();
+        element.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        console.log(`✓ Clicked button: ${element.id || element.className} = "${value}"`);
+        return true;
+      }
+      
+      console.warn(`✗ Could not find matching button for value: "${value}"`);
+      return false;
+    }
+
+    // 1. Focus the element first
+    element.focus();
+
+    // 2. Store original value
+    const originalValue = element.value;
+
+    // 3. Clear existing value if present (triggers input event)
+    if (originalValue) {
+      element.value = '';
+      element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    }
+
+    // 4. Set the new value
+    element.value = value;
+
+    // 5. For React/Vue compatibility - use native setter to bypass readonly
+    if (element instanceof HTMLInputElement) {
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value'
+    )?.set;
+
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(element, value);
+      }
+    } else if (element instanceof HTMLTextAreaElement) {
+      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        'value'
+      )?.set;
+
+      if (nativeTextAreaValueSetter) {
+        nativeTextAreaValueSetter.call(element, value);
+      }
+    }
+
+    // 6. Trigger events to ensure the framework detects the change
+    // Order: input -> change -> blur (simulates real user interaction)
+    element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+    // 7. Left-click sequence ONLY for select elements to confirm selection
+    if (element instanceof HTMLSelectElement) {
+      // Step 1: Focus the element
+      element.focus();
+
+      // Step 2: Dispatch mousedown event (button press)
+      element.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+
+      // Step 3: Dispatch mouseup event (button release)
+      element.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+
+      // Step 4: Call native click() method
+      element.click();
+
+      // Step 5: Dispatch synthetic click event
+      element.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+
+      // Step 6: Click outside to close dropdown
+      if (document.body) {
+        document.body.click();
+        document.body.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window
+        }));
+      }
+    }
+
+    // 8. Blur to complete the interaction
+    element.blur();
+    element.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+
+    console.log(`✓ Filled field: ${element.id || element.name} = "${value}"`);
+    return true;
+  } catch (error) {
+    console.error(`✗ Failed to fill field: ${element.id || element.name}`, error);
+    return false;
+  }
+}
+
+/**
+ * Auto-fill form fields with extracted data (works with both static and dynamic extraction)
+ */
+export async function autoFillForm(
+  formData: FormData,
+  extractedData: ExtractedData | DynamicExtractedData
+): Promise<{ filled: number; failed: number; details: string[] }> {
+  const details: string[] = [];
+  let filled = 0;
+  let failed = 0;
+
+  console.log('=== AUTO-FILL EXECUTION IN PAGE CONTEXT ===');
+  console.log('Form Data:', formData);
+  console.log('Extracted Data:', extractedData);
+  console.log('Number of form inputs to fill:', formData.inputs.length);
+
+  // Iterate through form fields and try to fill them
+  for (const field of formData.inputs) {
+    const fieldId = field.input_field_id;
+    const fieldName = field.input_field_name;
+    const fieldLabel = field.label;
+    const fieldType = field.input_type || 'text'; // Default to 'text' if not provided (backward compatibility)
+    const refId = field.ref_id; // Get ref_id from field
+
+    console.log(`\n--- Processing field: ${fieldLabel} ---`);
+    console.log(`  ID: "${fieldId}"`);
+    console.log(`  Name: "${fieldName}"`);
+    console.log(`  Type: "${fieldType}"`);
+    console.log(`  Ref ID: "${refId || 'N/A'}"`);
+
+    // Find the input element (ref_id takes priority)
+    const element = findInputElement(fieldId, fieldName, refId);
+
+    if (!element) {
+      const refInfo = refId ? `, Ref ID: ${refId}` : '';
+      const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName}${refInfo})`;
+      console.warn(msg);
+      details.push(msg);
+      failed++;
+      continue;
+    }
+
+    // Log which method was used to find the element
+    let methodUsed = 'ID/name fallback';
+    if (refId) {
+      const elementByRef = findInputElementByRefId(refId);
+      if (elementByRef && elementByRef === element) {
+        methodUsed = 'ref_id';
+      }
+    }
+    console.log(`  ✓ Element found via ${methodUsed}:`, element);
+    console.log(`  ✓ Expected type: ${fieldType}, Actual type: ${element.tagName.toLowerCase()}`);
+
+    // Try to find matching value in extracted data
+    let value: string | null = null;
+    let matchMethod = '';
+
+    // PRIORITY 1: Use data_format for date component fields (most specific)
+    const dataFormat = field.data_format;
+    const dataType = field.data_type;
+
+    if (dataFormat && dataType === 'date') {
+      console.log(`  Using data_format: "${dataFormat}" to extract value`);
+
+      // CRITICAL: Only use DOB for fields that are actually asking for birth date
+      // Check if field name/ID/label indicates this is a birth date field
+      const isDOBField = fieldName.toLowerCase().includes('birth') ||
+                         fieldName.toLowerCase().includes('dob') ||
+                         fieldId.toLowerCase().includes('birth') ||
+                         fieldId.toLowerCase().includes('dob') ||
+                         fieldLabel.toLowerCase().includes('birth');
+
+      if (!isDOBField) {
+        console.log(`  ⚠️ Field "${fieldLabel}" is a date field but NOT a birth date field - skipping DOB extraction`);
+        // Don't use DOB for non-birth-date fields (like passport expiry, etc.)
+        // Continue to next matching method
+      } else {
+        const dateOfBirth = extractedData.date_of_birth || extractedData.dob;
+
+      if (dateOfBirth) {
+        const dateStr = String(dateOfBirth);
+
+        // Handle date component fields (day_digit_1, month_digit_2, year_digit_3, etc.)
+        if (dataFormat.includes('digit')) {
+          // Parse date - assume DD/MM/YYYY format for extracted data (Bangladesh standard)
+          const parts = dateStr.split(/[\/\-\.]/); // Split by /, -, or .
+
+          if (dataFormat.startsWith('day_digit_')) {
+            const digitNum = parseInt(dataFormat.replace('day_digit_', ''));
+            const day = parts[0]?.padStart(2, '0') || '';
+            value = day[digitNum - 1] || '';
+            matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+          } else if (dataFormat.startsWith('month_digit_')) {
+            const digitNum = parseInt(dataFormat.replace('month_digit_', ''));
+            const month = parts[1]?.padStart(2, '0') || '';
+            value = month[digitNum - 1] || '';
+            matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+          } else if (dataFormat.startsWith('year_digit_')) {
+            const digitNum = parseInt(dataFormat.replace('year_digit_', ''));
+            const year = parts[2] || '';
+            value = year[digitNum - 1] || '';
+            matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+          }
+
+          if (value) {
+            console.log(`  ✓ Extracted "${value}" from date "${dateStr}" using format "${dataFormat}"`);
+          }
+        }
+        // Handle full date format conversion (DD/MM/YYYY vs MM/DD/YYYY)
+        else if (dataFormat.includes('/') || dataFormat.includes('-')) {
+          // Parse extracted date (assume DD/MM/YYYY format from extraction)
+          const parts = dateStr.split(/[\/\-\.]/);
+          const day = parts[0]?.padStart(2, '0') || '';
+          const month = parts[1]?.padStart(2, '0') || '';
+          const year = parts[2] || '';
+
+          // Convert to target format
+          const separator = dataFormat.includes('/') ? '/' : '-';
+
+          if (dataFormat.startsWith('DD')) {
+            // DD/MM/YYYY or DD-MM-YYYY
+            value = `${day}${separator}${month}${separator}${year}`;
+            matchMethod = `date-format (converted to ${dataFormat})`;
+          } else if (dataFormat.startsWith('MM')) {
+            // MM/DD/YYYY or MM-DD-YYYY
+            value = `${month}${separator}${day}${separator}${year}`;
+            matchMethod = `date-format (converted to ${dataFormat})`;
+          } else if (dataFormat.startsWith('YYYY')) {
+            // YYYY-MM-DD (ISO format)
+            value = `${year}${separator}${month}${separator}${day}`;
+            matchMethod = `date-format (converted to ${dataFormat})`;
+          }
+
+          if (value) {
+            console.log(`  ✓ Converted date "${dateStr}" to format "${dataFormat}" = "${value}"`);
+          }
+        }
+      }
+      } // End of isDOBField check
+    }
+
+    // PRIORITY 2: Direct field name/ID match
+    if (!value && extractedData[fieldName]) {
+      value = String(extractedData[fieldName]);
+      matchMethod = 'exact-name';
+      console.log(`  ✓ Direct match by name: "${fieldName}" = "${value}"`);
+    }
+    // Try by field ID
+    else if (!value && extractedData[fieldId]) {
+      value = String(extractedData[fieldId]);
+      matchMethod = 'exact-id';
+      console.log(`  ✓ Direct match by ID: "${fieldId}" = "${value}"`);
+    }
+    // For static ExtractedData, try with type assertion
+    else if (!value && 'name_english' in extractedData) {
+      // This is static ExtractedData, try known fields
+      if (extractedData[fieldName as keyof ExtractedData]) {
+        value = String(extractedData[fieldName as keyof ExtractedData]);
+        matchMethod = 'static-name';
+      } else if (extractedData[fieldId as keyof ExtractedData]) {
+        value = String(extractedData[fieldId as keyof ExtractedData]);
+        matchMethod = 'static-id';
+      }
+    }
+
+    // PRIORITY 3: Fuzzy matching
+    if (!value) {
+      const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedFieldId = fieldId.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      console.log(`  Trying fuzzy match...`);
+      console.log(`    Normalized name: "${normalizedFieldName}"`);
+      console.log(`    Normalized ID: "${normalizedFieldId}"`);
+
+      for (const [key, val] of Object.entries(extractedData)) {
+        if (!val) continue; // Skip empty values
+
+        const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (normalizedKey === normalizedFieldName || normalizedKey === normalizedFieldId) {
+          value = String(val);
+          matchMethod = `fuzzy (matched "${key}")`;
+          console.log(`    ✓ Fuzzy match found: ${key} = "${val}"`);
+          break;
+        }
+      }
+    }
+
+    console.log(`  Match method: ${matchMethod || 'NONE'}`);
+    console.log(`  Value to fill: "${value}"`);
+
+    if (value && value !== '' && value !== 'undefined' && value !== 'null') {
+      const success = setInputValue(element, value);
+      if (success) {
+        const msg = `✓ ${fieldLabel} [${fieldName}]: "${value}" (${matchMethod})`;
+        console.log(`  ${msg}`);
+        details.push(msg);
+        filled++;
+      } else {
+        const msg = `✗ Failed to set ${fieldLabel} [${fieldName}]`;
+        console.error(`  ${msg}`);
+        details.push(msg);
+        failed++;
+      }
+    } else {
+      const msg = `⚠️ No data available for: ${fieldLabel} [${fieldName}]`;
+      console.warn(`  ${msg}`);
+      details.push(msg);
+      failed++;
+    }
+  }
+
+  console.log('\n=== AUTO-FILL SUMMARY ===');
+  console.log(`Filled: ${filled}`);
+  console.log(`Failed: ${failed}`);
+  console.log('Details:', details);
+
+  return { filled, failed, details };
+}
+
+/**
+ * Execute auto-fill in the current tab
+ */
+export async function executeAutoFill(
+  formData: FormData,
+  extractedData: ExtractedData | DynamicExtractedData
+): Promise<{ filled: number; failed: number; details: string[] }> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+    if (!tab || !tab.id) {
+      throw new Error("No active tab found");
+    }
+
+    console.log('Executing auto-fill in tab:', tab.id);
+    console.log('Form data to send:', formData);
+    console.log('Extracted data to send:', extractedData);
+
+    // Execute auto-fill script in the page context
+    // Tree regeneration will happen inside the injected script if needed
+    // We need to pass the entire logic as a self-contained function
+    const results = await browser.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async (formDataArg, extractedDataArg) => {
+        console.log('[FormFiller] Injected script started');
+        console.log('[FormFiller] Form data:', formDataArg);
+        console.log('[FormFiller] Extracted data:', extractedDataArg);
+        
+        try {
+        // Validate accessibility tree in page context
+        function validateAccessibilityTree(formData) {
+          // Check if map exists
+          if (!window.__claudeElementMap) {
+            console.log('[FormFiller] Accessibility tree map does not exist');
+            return false;
+          }
+
+          // Get ref_ids from form data
+          const refIds = formData.inputs
+            .filter(f => f.ref_id)
+            .map(f => f.ref_id!);
+
+          if (refIds.length === 0) {
+            // If no ref_ids, tree validation doesn't apply (using ID/name fallback)
+            console.log('[FormFiller] No ref_ids in form data, validation skipped');
+            return true; // Consider valid since we'll use fallback methods
+          }
+
+          // Check if at least some ref_ids are still valid
+          // Sample first few ref_ids for performance
+          const sampleSize = Math.min(3, refIds.length);
+          const validRefs = refIds
+            .slice(0, sampleSize)
+            .filter(refId => {
+              const weakRef = window.__claudeElementMap![refId];
+              if (!weakRef) {
+                return false;
+              }
+              const element = weakRef.deref();
+              return element !== undefined;
+            });
+
+          // If less than 50% of sampled refs are valid, tree is stale
+          const isValid = validRefs.length >= Math.ceil(sampleSize * 0.5);
+          
+          console.log(`[FormFiller] Accessibility tree validation: ${isValid ? 'VALID' : 'STALE'} (${validRefs.length}/${sampleSize} refs valid)`);
+          
+          return isValid;
+        }
+
+        // Helper function to fill ng-select (Angular custom dropdown)
+        // NOTE: Uses setTimeout callbacks (NOT async/await) to match working pattern
+        function fillNgSelect(element, value) {
+          try {
+            console.log('  Attempting to fill ng-select with value: "' + value + '"');
+
+            // Find the input inside ng-select
+            const input = element.querySelector('input');
+            if (!input) {
+              console.error('  No input found inside ng-select');
+              return false;
+            }
+
+            // Click to open the dropdown
+            const container = element.querySelector('.ng-select-container');
+            if (container) {
+              container.click();
+              console.log('  Clicked ng-select to open dropdown');
+            }
+
+            // Wait a bit for dropdown to open
+            setTimeout(function() {
+              // Type the value into the search input
+              input.value = value;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+
+              console.log('  Typed value into ng-select search');
+
+              // Wait for options to filter
+              setTimeout(function() {
+                // Find matching options
+                const options = document.querySelectorAll('.ng-dropdown-panel .ng-option');
+                console.log('  Found ' + options.length + ' options');
+
+                const normalizedValue = value.toLowerCase().trim();
+
+                for (const option of options) {
+                  const optionText = option.textContent ? option.textContent.toLowerCase().trim() : '';
+                  console.log('  Checking option: "' + optionText + '"');
+
+                  if (optionText.includes(normalizedValue) || normalizedValue.includes(optionText)) {
+                    console.log('  ✓ Matched option: "' + optionText + '"');
+                    option.click();
+                    return;
+                  }
+                }
+
+                // If no exact match, try first option if available
+                if (options.length > 0) {
+                  console.log('  Using first available option');
+                  options[0].click();
+                }
+              }, 200);
+            }, 200);
+
+            return true;
+          } catch (error) {
+            console.error('  Error setting ng-select value:', error);
+            return false;
+          }
+        }
+
+        // Helper function to find element by ref_id
+        function findInputElementByRefId(refId) {
+          // Check if __claudeElementMap exists
+          if (!window.__claudeElementMap) {
+            console.warn('__claudeElementMap not found - accessibility tree not initialized');
+            return null;
+          }
+
+          // Get WeakRef from map
+          const weakRef = window.__claudeElementMap[refId];
+          if (!weakRef) {
+            console.warn(`Ref ID ${refId} not found in element map`);
+            return null;
+          }
+
+          // Dereference WeakRef to get element
+          const element = weakRef.deref();
+          if (!element) {
+            console.warn(`Element for ref_id ${refId} was garbage collected or removed`);
+            return null;
+          }
+
+          // Verify it's an input element, button, or ng-select
+          if (element instanceof HTMLInputElement ||
+              element instanceof HTMLTextAreaElement ||
+              element instanceof HTMLSelectElement ||
+              element instanceof HTMLButtonElement) {
+            return element;
+          }
+
+          // Also accept ng-select custom elements
+          if (element.tagName && element.tagName.toLowerCase() === 'ng-select') {
+            return element as any;
+          }
+
+          console.warn(`Element for ref_id ${refId} is not an input element, button, or ng-select`);
+          return null;
+        }
+
+        // Helper function to find input element by various methods
+        // Priority: ref_id > fieldId > fieldName > case-insensitive search
+        // Also searches for button elements that act as custom inputs
+        function findInputElement(
+          fieldId: string, 
+          fieldName: string, 
+          refId?: string
+        ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement | null {
+          // PRIORITY 1: Try ref_id first (most reliable)
+          if (refId) {
+            const elementByRef = findInputElementByRefId(refId);
+            if (elementByRef) {
+              console.log(`  ✓ Found element via ref_id: ${refId}`);
+              return elementByRef;
+            }
+            console.log(`  ⚠️ ref_id ${refId} failed, falling back to ID/name lookup`);
+          }
+
+          // PRIORITY 2: Try by ID
+          if (fieldId) {
+            const byId = document.getElementById(fieldId);
+            if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement || byId instanceof HTMLButtonElement)) {
+              return byId;
+            }
+          }
+
+          // PRIORITY 3: Try by name attribute (including ng-select)
+          if (fieldName) {
+            const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"], button[name="${fieldName}"], ng-select[formControlName="${fieldName}"]`);
+            if (byName) {
+              // ng-select is a custom element, cast to any to avoid type issues
+              return byName as any;
+            }
+          }
+
+          // PRIORITY 4: Try by ID as selector
+          if (fieldId) {
+            const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"], button[id="${fieldId}"]`);
+            if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement || bySelector instanceof HTMLButtonElement)) {
+              return bySelector;
+            }
+          }
+
+          // PRIORITY 5: Try case-insensitive search
+          if (fieldName) {
+            const allInputs = document.querySelectorAll('input, textarea, select, button');
+            for (const input of allInputs) {
+              if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement || input instanceof HTMLButtonElement) {
+                const name = input.getAttribute('name')?.toLowerCase();
+                const id = input.getAttribute('id')?.toLowerCase();
+                if (name === fieldName.toLowerCase() || id === fieldName.toLowerCase()) {
+                  return input;
+                }
+              }
+            }
+          }
+
+          // PRIORITY 6: For button groups, try to find by label text
+          // Look for labels that contain the field name, then find buttons in the same container
+          if (fieldName) {
+            const normalizedFieldName = fieldName.toLowerCase();
+            const labels = document.querySelectorAll('label');
+            for (const label of labels) {
+              const labelText = (label.textContent || label.innerText || '').toLowerCase();
+              if (labelText.includes(normalizedFieldName) || normalizedFieldName.includes(labelText)) {
+                // Find container (selectContainer, form-group, etc.)
+                const container = label.closest('.selectContainer, .form-group, .form-row') || label.parentElement;
+                if (container) {
+                  // Return first button found in container (setInputValue will find the right one)
+                  const firstButton = container.querySelector('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+                  if (firstButton instanceof HTMLButtonElement) {
+                    console.log(`  ✓ Found button group via label: ${labelText}`);
+                    return firstButton;
+                  }
+                }
+              }
+            }
+          }
+
+          return null;
+        }
+
+        function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement, value: string): boolean {
+          try {
+            // Special handling for button elements (custom inputs like sex buttons)
+            if (element instanceof HTMLButtonElement) {
+              // Normalize the value to match
+              const normalizedValue = value.toLowerCase().trim();
+              
+              // Try to find a button in the same container that matches the value
+              // Look for buttons with matching value attribute or text content
+              const container = element.closest('.selectContainer, .form-group, .form-row') || element.parentElement;
+              if (container) {
+                const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+                
+                for (const button of buttons) {
+                  if (button instanceof HTMLButtonElement) {
+                    const buttonValue = (button.value || '').toLowerCase().trim();
+                    const buttonText = (button.textContent || button.innerText || '').toLowerCase().trim();
+
+                    // Check if this button matches the value
+                    // Use EXACT matching to avoid "male" matching "fe-male"
+                    let isMatch = false;
+
+                    // Exact matches
+                    if (buttonValue === normalizedValue || buttonText === normalizedValue) {
+                      isMatch = true;
+                    }
+                    // Special case for gender - use EXACT matching only
+                    else if (normalizedValue === 'male' || normalizedValue === 'm' || normalizedValue === 'পুরুষ') {
+                      if (buttonValue === 'm' || buttonText === 'male' || buttonText === 'পুরুষ') {
+                        isMatch = true;
+                      }
+                    }
+                    else if (normalizedValue === 'female' || normalizedValue === 'f' || normalizedValue === 'মহিলা') {
+                      if (buttonValue === 'f' || buttonText === 'female' || buttonText === 'মহিলা') {
+                        isMatch = true;
+                      }
+                    }
+                    // Other values can use partial matching (but only if >= 3 chars)
+                    else if (normalizedValue.length >= 3 && (buttonText.includes(normalizedValue) || normalizedValue.includes(buttonText))) {
+                      isMatch = true;
+                    }
+
+                    if (isMatch) {
+                      
+                      // Click the matching button
+                      button.click();
+                      
+                      // Also trigger events
+                      button.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+                      button.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                      
+                      console.log(`✓ Clicked button: ${button.id || button.className} = "${value}"`);
+                      return true;
+                    }
+                  }
+                }
+              }
+              
+              // If no matching button found, try clicking this button if its value/text matches
+              const elementValue = (element.value || '').toLowerCase().trim();
+              const elementText = (element.textContent || element.innerText || '').toLowerCase().trim();
+
+              // Use exact matching only (no substring to avoid "male" matching "female")
+              let elementMatches = false;
+              if (elementValue === normalizedValue || elementText === normalizedValue) {
+                elementMatches = true;
+              }
+              // Special gender matching
+              else if ((normalizedValue === 'male' || normalizedValue === 'm' || normalizedValue === 'পুরুষ') &&
+                       (elementValue === 'm' || elementText === 'male' || elementText === 'পুরুষ')) {
+                elementMatches = true;
+              }
+              else if ((normalizedValue === 'female' || normalizedValue === 'f' || normalizedValue === 'মহিলা') &&
+                       (elementValue === 'f' || elementText === 'female' || elementText === 'মহিলা')) {
+                elementMatches = true;
+              }
+
+              if (elementMatches) {
+                element.click();
+                element.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                console.log(`✓ Clicked button: ${element.id || element.className} = "${value}"`);
+                return true;
+              }
+              
+              console.warn(`✗ Could not find matching button for value: "${value}"`);
+              return false;
+            }
+
+            // Special handling for ng-select (Angular custom dropdown)
+            // Check if element is ng-select custom element or contains ng-select
+            const isNgSelect = element.tagName.toLowerCase() === 'ng-select' ||
+                              (element.classList && element.classList.contains('ng-select')) ||
+                              (element.getAttribute('role') === 'combobox' && element.querySelector('.ng-select-container'));
+
+            if (isNgSelect) {
+              // ng-select requires async handling
+              // We can't await here, so we use fillNgSelect which is async
+              // Just log the attempt and return true (async operation happens in background)
+              console.log('✓ Detected ng-select, will fill asynchronously');
+              fillNgSelect(element, value).then(success => {
+                if (success) {
+                  console.log(`✓ ng-select filled successfully with "${value}"`);
+                } else {
+                  console.warn(`✗ ng-select filling failed for value "${value}"`);
+                }
+              }).catch(error => {
+                console.error('✗ ng-select error:', error);
+              });
+              // Return true immediately (ng-select fills async in background)
+              return true;
+            }
+
+            // Special handling for select dropdowns
+            if (element instanceof HTMLSelectElement) {
+              // 1. Focus the select
+              element.focus();
+
+              const normalizedValue = value.toLowerCase().trim();
+              const options = Array.from(element.options);
+              let optionFound = false;
+              let selectedOption: HTMLOptionElement | null = null;
+
+              // Method 1: Try exact value match (case-sensitive)
+              selectedOption = options.find(opt => opt.value === value) || null;
+              if (selectedOption) {
+                element.value = selectedOption.value;
+                element.selectedIndex = selectedOption.index;
+                optionFound = true;
+              }
+
+              // Method 2: Try case-insensitive value match
+              if (!optionFound) {
+                selectedOption = options.find(opt => opt.value.toLowerCase().trim() === normalizedValue) || null;
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              // Method 3: Try exact text content match
+              if (!optionFound) {
+                selectedOption = options.find(opt => {
+                  const text = (opt.textContent || opt.innerText || '').trim();
+                  return text === value;
+                }) || null;
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              // Method 4: Try case-insensitive text content match
+              if (!optionFound) {
+                selectedOption = options.find(opt => {
+                  const text = (opt.textContent || opt.innerText || '').toLowerCase().trim();
+                  return text === normalizedValue;
+                }) || null;
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              // Method 5: Try partial match - value contains the search term
+              if (!optionFound) {
+                selectedOption = options.find(opt => {
+                  const optValue = opt.value.toLowerCase().trim();
+                  return optValue.includes(normalizedValue) && normalizedValue.length >= 3;
+                }) || null;
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              // Method 6: Try partial match - text contains the search term
+              if (!optionFound) {
+                selectedOption = options.find(opt => {
+                  const text = (opt.textContent || opt.innerText || '').toLowerCase().trim();
+                  return text.includes(normalizedValue) && normalizedValue.length >= 3;
+                }) || null;
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              // Method 7: Try reverse partial match - search term contains option text
+              if (!optionFound) {
+                selectedOption = options.find(opt => {
+                  const text = (opt.textContent || opt.innerText || '').toLowerCase().trim();
+                  return text.length >= 3 && normalizedValue.includes(text);
+                }) || null;
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              // Method 8: Common variations for specific field types
+              if (!optionFound) {
+                // Gender/Sex variations
+                if (normalizedValue === 'male' || normalizedValue === 'পুরুষ' || normalizedValue === 'm') {
+                  selectedOption = options.find(opt => {
+                    const optValue = opt.value.toLowerCase();
+                    const optText = (opt.textContent || '').toLowerCase();
+                    return optValue.includes('male') || optText.includes('male') ||
+                           optValue.includes('পুরুষ') || optText.includes('পুরুষ') ||
+                           optValue === 'm' || optValue === '1';
+                  }) || null;
+                } else if (normalizedValue === 'female' || normalizedValue === 'মহিলা' || normalizedValue === 'f') {
+                  selectedOption = options.find(opt => {
+                    const optValue = opt.value.toLowerCase();
+                    const optText = (opt.textContent || '').toLowerCase();
+                    return optValue.includes('female') || optText.includes('female') ||
+                           optValue.includes('মহিলা') || optText.includes('মহিলা') ||
+                           optValue === 'f' || optValue === '2';
+                  }) || null;
+                }
+                // Religion variations
+                else if (normalizedValue === 'islam' || normalizedValue === 'ইসলাম') {
+                  selectedOption = options.find(opt => {
+                    const optValue = opt.value.toLowerCase();
+                    const optText = (opt.textContent || '').toLowerCase();
+                    return optValue.includes('islam') || optText.includes('islam') ||
+                           optValue.includes('ইসলাম') || optText.includes('ইসলাম') ||
+                           optValue === 'muslim' || optText.includes('muslim');
+                  }) || null;
+                }
+                // Marital Status variations
+                else if (normalizedValue === 'unmarried' || normalizedValue === 'single' || normalizedValue === 'অবিবাহিত') {
+                  selectedOption = options.find(opt => {
+                    const optValue = opt.value.toLowerCase();
+                    const optText = (opt.textContent || '').toLowerCase();
+                    return optValue.includes('unmarried') || optText.includes('unmarried') ||
+                           optValue.includes('single') || optText.includes('single') ||
+                           optValue.includes('অবিবাহিত') || optText.includes('অবিবাহিত');
+                  }) || null;
+                } else if (normalizedValue === 'married' || normalizedValue === 'বিবাহিত') {
+                  selectedOption = options.find(opt => {
+                    const optValue = opt.value.toLowerCase();
+                    const optText = (opt.textContent || '').toLowerCase();
+                    return optValue.includes('married') || optText.includes('married') ||
+                           optValue.includes('বিবাহিত') || optText.includes('বিবাহিত');
+                  }) || null;
+                }
+
+                if (selectedOption) {
+                  element.value = selectedOption.value;
+                  element.selectedIndex = selectedOption.index;
+                  optionFound = true;
+                }
+              }
+
+              if (!optionFound) {
+                console.warn(`Could not find matching option for value: "${value}" in select:`, element);
+                console.log('Available options:', options.map(o => ({ value: o.value, text: o.textContent })));
+                element.blur();
+                return false;
+              }
+
+              // 2. Trigger events for select
+              element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+              element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+              // 3. Trigger click on the selected option (some frameworks need this)
+              if (selectedOption) {
+                selectedOption.dispatchEvent(new MouseEvent('click', {
+                  bubbles: true,
+                  cancelable: true,
+                  view: window
+                }));
+              }
+
+              // 4. Left-click sequence to confirm selection (Claude's pattern)
+              // Step 1: Focus the element
+              element.focus();
+
+              // Step 2: Dispatch mousedown event (button press)
+              element.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+              }));
+
+              // Step 3: Dispatch mouseup event (button release)
+              element.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+              }));
+
+              // Step 4: Call native click() method
+              element.click();
+
+              // Step 5: Dispatch synthetic click event
+              element.dispatchEvent(new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+              }));
+
+              // Step 6: Click outside to close dropdown
+              if (document.body) {
+                document.body.click();
+                document.body.dispatchEvent(new MouseEvent('click', {
+                  bubbles: true,
+                  cancelable: true,
+                  view: window
+                }));
+              }
+
+              // 5. Blur
+              element.blur();
+              element.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+
+              return true;
+            } else {
+              // Regular input/textarea - use improved logic from above
+              // 1. Focus
+              element.focus();
+
+              // 2. Clear existing value
+              if (element.value) {
+                element.value = '';
+                element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+              }
+
+              // 3. Set value
+              element.value = value;
+
+              // 4. Use native setters for React/Vue
+              const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype,
+                'value'
+              )?.set;
+
+              if (nativeInputValueSetter && element instanceof HTMLInputElement) {
+                nativeInputValueSetter.call(element, value);
+              }
+
+              const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype,
+                'value'
+              )?.set;
+
+              if (nativeTextAreaValueSetter && element instanceof HTMLTextAreaElement) {
+                nativeTextAreaValueSetter.call(element, value);
+              }
+
+              // 5. Trigger events
+              element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+              element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+              // 6. Blur
+              element.blur();
+              element.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+
+            return true;
+            }
+          } catch (error) {
+            console.error('Error setting value:', error);
+            return false;
+          }
+        }
+
+        // Validate accessibility tree before filling
+        const treeValid = validateAccessibilityTree(formDataArg);
+        if (!treeValid) {
+          console.warn('[FormFiller] Accessibility tree is stale - ref_ids may not work, falling back to ID/name lookup');
+        }
+
+        // Main auto-fill logic
+        const details: string[] = [];
+        let filled = 0;
+        let failed = 0;
+
+        console.log('=== AUTO-FILL EXECUTION IN PAGE CONTEXT ===');
+        console.log('Form Data:', formDataArg);
+        console.log('Extracted Data:', extractedDataArg);
+        console.log('Tree Valid:', treeValid);
+
+        for (const field of formDataArg.inputs) {
+          const fieldId = field.input_field_id;
+          const fieldName = field.input_field_name;
+          const fieldLabel = field.label;
+          const fieldType = field.input_type || 'text'; // Default to 'text' if not provided (backward compatibility)
+          const refId = field.ref_id; // Get ref_id from field
+
+          console.log(`\n--- Processing field: ${fieldLabel} ---`);
+          console.log(`  ID: "${fieldId}"`);
+          console.log(`  Name: "${fieldName}"`);
+          console.log(`  Type: "${fieldType}"`);
+          console.log(`  Ref ID: "${refId || 'N/A'}"`);
+
+          const element = findInputElement(fieldId, fieldName, refId);
+
+          if (!element) {
+            const refInfo = refId ? `, Ref ID: ${refId}` : '';
+            const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName}${refInfo})`;
+            console.warn(msg);
+            details.push(msg);
+            failed++;
+            continue;
+          }
+
+          // Log which method was used to find the element
+          let methodUsed = 'ID/name fallback';
+          if (refId) {
+            const elementByRef = findInputElementByRefId(refId);
+            if (elementByRef && elementByRef === element) {
+              methodUsed = 'ref_id';
+            }
+          }
+          console.log(`  ✓ Element found via ${methodUsed}:`, element);
+          console.log(`  ✓ Expected type: ${fieldType}, Actual type: ${element.tagName.toLowerCase()}`);
+
+          let value: string | null = null;
+          let matchMethod = '';
+
+          // PRIORITY 1: Use data_format for date component fields
+          const dataFormat = field.data_format;
+          const dataType = field.data_type;
+
+          if (dataFormat && dataType === 'date') {
+            console.log(`  Using data_format: "${dataFormat}" to extract value`);
+
+            // CRITICAL: Only use DOB for fields that are actually asking for birth date
+            const isDOBField = fieldName.toLowerCase().includes('birth') ||
+                               fieldName.toLowerCase().includes('dob') ||
+                               fieldId.toLowerCase().includes('birth') ||
+                               fieldId.toLowerCase().includes('dob') ||
+                               fieldLabel.toLowerCase().includes('birth');
+
+            if (!isDOBField) {
+              console.log(`  ⚠️ Field "${fieldLabel}" is a date field but NOT a birth date field - skipping DOB`);
+            } else {
+            const dateOfBirth = extractedDataArg.date_of_birth || extractedDataArg.dob;
+
+            if (dateOfBirth) {
+              const dateStr = String(dateOfBirth);
+
+              // Handle date component fields (day_digit_1, month_digit_2, year_digit_3, etc.)
+              if (dataFormat.includes('digit')) {
+                const parts = dateStr.split(/[\/\-\.]/);
+
+                if (dataFormat.startsWith('day_digit_')) {
+                  const digitNum = parseInt(dataFormat.replace('day_digit_', ''));
+                  const day = parts[0]?.padStart(2, '0') || '';
+                  value = day[digitNum - 1] || '';
+                  matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+                } else if (dataFormat.startsWith('month_digit_')) {
+                  const digitNum = parseInt(dataFormat.replace('month_digit_', ''));
+                  const month = parts[1]?.padStart(2, '0') || '';
+                  value = month[digitNum - 1] || '';
+                  matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+                } else if (dataFormat.startsWith('year_digit_')) {
+                  const digitNum = parseInt(dataFormat.replace('year_digit_', ''));
+                  const year = parts[2] || '';
+                  value = year[digitNum - 1] || '';
+                  matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+                }
+
+                if (value) {
+                  console.log(`  ✓ Extracted "${value}" from date "${dateStr}" using format "${dataFormat}"`);
+                }
+              }
+              // Handle full date format conversion (DD/MM/YYYY vs MM/DD/YYYY)
+              else if (dataFormat.includes('/') || dataFormat.includes('-')) {
+                const parts = dateStr.split(/[\/\-\.]/);
+                const day = parts[0]?.padStart(2, '0') || '';
+                const month = parts[1]?.padStart(2, '0') || '';
+                const year = parts[2] || '';
+
+                const separator = dataFormat.includes('/') ? '/' : '-';
+
+                if (dataFormat.startsWith('DD')) {
+                  value = `${day}${separator}${month}${separator}${year}`;
+                  matchMethod = `date-format (converted to ${dataFormat})`;
+                } else if (dataFormat.startsWith('MM')) {
+                  value = `${month}${separator}${day}${separator}${year}`;
+                  matchMethod = `date-format (converted to ${dataFormat})`;
+                } else if (dataFormat.startsWith('YYYY')) {
+                  value = `${year}${separator}${month}${separator}${day}`;
+                  matchMethod = `date-format (converted to ${dataFormat})`;
+                }
+
+                if (value) {
+                  console.log(`  ✓ Converted date "${dateStr}" to format "${dataFormat}" = "${value}"`);
+                }
+              }
+            }
+            } // End of isDOBField check
+          }
+
+          // PRIORITY 2: Direct field name/ID match
+          if (!value && extractedDataArg[fieldName]) {
+            value = String(extractedDataArg[fieldName]);
+            matchMethod = 'exact-name';
+          } else if (!value && extractedDataArg[fieldId]) {
+            value = String(extractedDataArg[fieldId]);
+            matchMethod = 'exact-id';
+          }
+          // PRIORITY 3: Fuzzy matching
+          else if (!value) {
+            const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normalizedFieldId = fieldId.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+            for (const [key, val] of Object.entries(extractedDataArg)) {
+              if (!val) continue;
+              const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (normalizedKey === normalizedFieldName || normalizedKey === normalizedFieldId) {
+                value = String(val);
+                matchMethod = `fuzzy (matched "${key}")`;
+                break;
+              }
+            }
+          }
+
+          if (value && value !== '' && value !== 'undefined' && value !== 'null') {
+            const success = setInputValue(element, value);
+            if (success) {
+              // After successful fillup, perform left-click sequence ONLY for select elements
+              if (element instanceof HTMLSelectElement) {
+                try {
+                  // Method 1: Click on the element itself (Claude's pattern)
+                  element.focus();
+                  element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                  element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                  element.click();
+                  element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                  
+                  // Method 2: Click outside to close dropdown
+                  if (document.body) {
+                    document.body.click();
+                    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                  }
+                  
+                  // Small delay to allow UI to update
+                  await new Promise(function(resolve) { setTimeout(resolve, 50); });
+                } catch (e) {
+                  console.warn('Click sequence failed:', e);
+                }
+              }
+
+              const msg = `✓ ${fieldLabel} [${fieldName}]: "${value}" (${matchMethod})`;
+              console.log(`  ${msg}`);
+              details.push(msg);
+              filled++;
+            } else {
+              const msg = `✗ Failed to set ${fieldLabel} [${fieldName}]`;
+              console.error(`  ${msg}`);
+              details.push(msg);
+              failed++;
+            }
+          } else {
+            const msg = `⚠️ No data available for: ${fieldLabel} [${fieldName}]`;
+            console.warn(`  ${msg}`);
+            details.push(msg);
+            failed++;
+          }
+        }
+
+        console.log('\n=== AUTO-FILL SUMMARY ===');
+        console.log(`Filled: ${filled}`);
+        console.log(`Failed: ${failed}`);
+
+        return { filled, failed, details };
+        } catch (error) {
+          console.error('[FormFiller] Error in injected script:', error);
+          return {
+            filled: 0,
+            failed: formDataArg.inputs.length,
+            details: [`Error: ${error instanceof Error ? error.message : String(error)}`]
+          };
+        }
+      },
+      args: [formData, extractedData],
+    });
+
+    console.log('Script execution results:', results);
+
+    if (!results || !results[0]) {
+      console.error('Script execution failed - no results returned');
+      throw new Error("Script execution returned no results. Check browser console for errors.");
+    }
+
+    if (results[0].error) {
+      console.error('Script execution error:', results[0].error);
+      throw new Error(`Script execution failed: ${results[0].error}`);
+    }
+
+    if (!results[0].result) {
+      console.error('Script execution returned no result data');
+      console.error('Full results:', results);
+      throw new Error("Script execution returned no result data. The script may have failed silently.");
+    }
+
+    return results[0].result as { filled: number; failed: number; details: string[] };
+  } catch (error) {
+    console.error('Execute auto-fill error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'N/A');
+    throw error;
+  }
+}

@@ -14,7 +14,7 @@ declare global {
  * Find input element using ref_id from accessibility tree
  * This is the most reliable method as it directly references the element
  */
-function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement | Element | null {
   // Check if __claudeElementMap exists
   if (!window.__claudeElementMap) {
     console.warn('__claudeElementMap not found - accessibility tree not initialized');
@@ -35,26 +35,115 @@ function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextArea
     return null;
   }
 
-  // Verify it's an input element
+  // Verify it's an input element, button, or ng-select
   if (element instanceof HTMLInputElement || 
       element instanceof HTMLTextAreaElement || 
-      element instanceof HTMLSelectElement) {
+      element instanceof HTMLSelectElement ||
+      element instanceof HTMLButtonElement) {
     return element;
   }
 
-  console.warn(`Element for ref_id ${refId} is not an input element`);
+  // Also accept ng-select custom elements
+  if (element.tagName && element.tagName.toLowerCase() === 'ng-select') {
+    return element;
+  }
+
+  console.warn(`Element for ref_id ${refId} is not an input element, button, or ng-select`);
+  return null;
+}
+
+/**
+ * Find input element by label text (for Angular/dynamic forms)
+ */
+function findInputByLabel(labelText: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+  if (!labelText) return null;
+
+  const normalizedLabel = labelText.toLowerCase().trim();
+
+  // Find all labels
+  const labels = document.querySelectorAll('label');
+
+  for (const label of labels) {
+    const labelContent = label.textContent?.toLowerCase().trim() || '';
+
+    // Check if label matches (exact or contains)
+    if (labelContent.includes(normalizedLabel) || normalizedLabel.includes(labelContent)) {
+      // Find the associated input - try multiple strategies
+
+      // Strategy 1: Look for input with matching 'for' attribute
+      const forAttr = label.getAttribute('for');
+      if (forAttr) {
+        const input = document.getElementById(forAttr);
+        if (input && (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement)) {
+          return input;
+        }
+      }
+
+      // Strategy 2: Look in the same container (Angular pattern)
+      const container = label.closest('.col-md-5, .col-md-3, .col-md-12, .vbeop-input, .vbeop-select, .vbeop-checkbox, [class*="form"], [class*="field"]');
+      if (container) {
+        // Try native inputs first
+        const nativeInput = container.querySelector('input:not([type="hidden"]), textarea, select');
+        if (nativeInput && (nativeInput instanceof HTMLInputElement || nativeInput instanceof HTMLTextAreaElement || nativeInput instanceof HTMLSelectElement)) {
+          return nativeInput;
+        }
+
+        // For ng-select or custom components, find the underlying input
+        const ngSelectInput = container.querySelector('ng-select input, .ng-select input');
+        if (ngSelectInput && ngSelectInput instanceof HTMLInputElement) {
+          return ngSelectInput;
+        }
+      }
+
+      // Strategy 3: Next sibling or descendant
+      let nextElement = label.nextElementSibling;
+      while (nextElement) {
+        if (nextElement instanceof HTMLInputElement || nextElement instanceof HTMLTextAreaElement || nextElement instanceof HTMLSelectElement) {
+          return nextElement;
+        }
+        const input = nextElement.querySelector('input, textarea, select');
+        if (input && (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement)) {
+          return input;
+        }
+        nextElement = nextElement.nextElementSibling;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find ng-select component by label
+ */
+function findNgSelectByLabel(labelText: string): Element | null {
+  if (!labelText) return null;
+
+  const normalizedLabel = labelText.toLowerCase().trim();
+  const labels = document.querySelectorAll('label');
+
+  for (const label of labels) {
+    const labelContent = label.textContent?.toLowerCase().trim() || '';
+
+    if (labelContent.includes(normalizedLabel) || normalizedLabel.includes(labelContent)) {
+      const container = label.closest('.col-md-5, .col-md-3, .col-md-12, .vbeop-select, [class*="form"], [class*="field"]');
+      if (container) {
+        const ngSelect = container.querySelector('ng-select, .ng-select');
+        if (ngSelect) {
+          return ngSelect;
+        }
+      }
+    }
+  }
+
   return null;
 }
 
 /**
  * Find input element by various methods
- * Priority: ref_id > fieldId > fieldName > case-insensitive search
+ * Priority: ref_id > fieldId > fieldName > label > case-insensitive search
  */
-function findInputElement(
-  fieldId: string, 
-  fieldName: string, 
-  refId?: string
-): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+function findInputElement(fieldId: string, fieldName: string, fieldLabel: string = '', refId?: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement | Element | null {
   // PRIORITY 1: Try ref_id first (most reliable)
   if (refId) {
     const elementByRef = findInputElementByRefId(refId);
@@ -68,32 +157,38 @@ function findInputElement(
   // PRIORITY 2: Try by ID
   if (fieldId) {
     const byId = document.getElementById(fieldId);
-    if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement)) {
+    if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement || byId instanceof HTMLButtonElement)) {
       return byId;
     }
   }
 
-  // PRIORITY 3: Try by name attribute
+  // PRIORITY 3: Try by name attribute (including ng-select)
   if (fieldName) {
-    const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"]`);
-    if (byName && (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement)) {
+    const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"], button[name="${fieldName}"], ng-select[formControlName="${fieldName}"]`);
+    if (byName) {
+      // ng-select is a custom element, return as-is
+      if (byName.tagName.toLowerCase() === 'ng-select') {
       return byName;
+      }
+      if (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement || byName instanceof HTMLButtonElement) {
+        return byName;
+      }
     }
   }
 
   // PRIORITY 4: Try by ID as selector
   if (fieldId) {
-    const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"]`);
-    if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement)) {
+    const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"], button[id="${fieldId}"]`);
+    if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement || bySelector instanceof HTMLButtonElement)) {
       return bySelector;
     }
   }
 
   // PRIORITY 5: Try case-insensitive search
   if (fieldName) {
-    const allInputs = document.querySelectorAll('input, textarea, select');
+    const allInputs = document.querySelectorAll('input, textarea, select, button');
     for (const input of allInputs) {
-      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement || input instanceof HTMLButtonElement) {
         const name = input.getAttribute('name')?.toLowerCase();
         const id = input.getAttribute('id')?.toLowerCase();
         if (name === fieldName.toLowerCase() || id === fieldName.toLowerCase()) {
@@ -103,19 +198,587 @@ function findInputElement(
     }
   }
 
+  // PRIORITY 6: Try by label text (for Angular/dynamic forms)
+  if (fieldLabel) {
+    const byLabel = findInputByLabel(fieldLabel);
+    if (byLabel) {
+      return byLabel;
+    }
+  }
+
+  // PRIORITY 7: For button groups, try to find by label text
+  if (fieldName) {
+    const normalizedFieldName = fieldName.toLowerCase();
+    const labels = document.querySelectorAll('label');
+    for (const label of labels) {
+      const labelText = (label.textContent || label.innerText || '').toLowerCase();
+      if (labelText.includes(normalizedFieldName) || normalizedFieldName.includes(labelText)) {
+        const container = label.closest('.selectContainer, .form-group, .form-row') || label.parentElement;
+        if (container) {
+          const firstButton = container.querySelector('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+          if (firstButton instanceof HTMLButtonElement) {
+            console.log(`  ✓ Found button group via label: ${labelText}`);
+            return firstButton;
+          }
+        }
+      }
+    }
+  }
+
   return null;
+}
+
+/**
+ * Set value to ng-select dropdown (Angular component)
+ */
+function setNgSelectValue(ngSelect: Element, value: string, fieldLabel: string): boolean {
+  try {
+    console.log(`  Attempting to fill ng-select: "${fieldLabel}" with value: "${value}"`);
+
+    // Find the input inside ng-select
+    const input = ngSelect.querySelector('input');
+    if (!input) {
+      console.error('  No input found inside ng-select');
+      return false;
+    }
+
+    // Click to open the dropdown
+    const container = ngSelect.querySelector('.ng-select-container');
+    if (container) {
+      (container as HTMLElement).click();
+      console.log('  Clicked ng-select to open dropdown');
+    }
+
+    // Wait a bit for dropdown to open
+    setTimeout(() => {
+      // Type the value into the search input
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      console.log('  Typed value into ng-select search');
+
+      // Wait for options to filter
+      setTimeout(() => {
+        // Find matching options
+        const options = document.querySelectorAll('.ng-dropdown-panel .ng-option');
+        console.log(`  Found ${options.length} options`);
+
+        const normalizedValue = value.toLowerCase().trim();
+
+        for (const option of options) {
+          const optionText = option.textContent?.toLowerCase().trim() || '';
+          console.log(`  Checking option: "${optionText}"`);
+
+          if (optionText.includes(normalizedValue) || normalizedValue.includes(optionText)) {
+            console.log(`  ✓ Matched option: "${optionText}"`);
+            (option as HTMLElement).click();
+            return;
+          }
+        }
+
+        // If no exact match, try first option if available
+        if (options.length > 0) {
+          console.log('  Using first available option');
+          (options[0] as HTMLElement).click();
+        }
+      }, 200);
+    }, 200);
+
+    return true;
+  } catch (error) {
+    console.error('  Error setting ng-select value:', error);
+    return false;
+  }
+}
+
+/**
+ * Set value to vbeop-checkbox (custom checkbox component)
+ */
+function setCheckboxValue(label: string, checked: boolean): boolean {
+  try {
+    const labels = document.querySelectorAll('label');
+    const normalizedLabel = label.toLowerCase().trim();
+
+    for (const labelEl of labels) {
+      const labelText = labelEl.textContent?.toLowerCase().trim() || '';
+
+      if (labelText.includes(normalizedLabel)) {
+        const checkbox = labelEl.previousElementSibling || labelEl.querySelector('input[type="checkbox"]');
+
+        if (checkbox && checkbox instanceof HTMLInputElement && checkbox.type === 'checkbox') {
+          if (checkbox.checked !== checked) {
+            checkbox.checked = checked;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log(`  ✓ Set checkbox "${label}" to ${checked}`);
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  } catch (error) {
+    console.error('  Error setting checkbox:', error);
+    return false;
+  }
+}
+
+/**
+ * Convert date to DD/MM/YYYY format
+ */
+function formatDateForInput(value: string, fieldLabel: string): string {
+  // Check if this is a date field
+  const isDateField = fieldLabel.toLowerCase().includes('date') ||
+                      fieldLabel.toLowerCase().includes('birth') ||
+                      fieldLabel.toLowerCase().includes('তারিখ');
+
+  if (!isDateField) return value;
+
+  // Try to parse various date formats
+  // Format: "28 JULY 2003" or "28 July 2003"
+  const monthNamePattern = /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i;
+  let match = value.match(monthNamePattern);
+
+  if (match) {
+    const day = match[1].padStart(2, '0');
+    const monthName = match[2].toLowerCase();
+    const year = match[3];
+
+    const monthMap: Record<string, string> = {
+      'january': '01', 'february': '02', 'march': '03', 'april': '04',
+      'may': '05', 'june': '06', 'july': '07', 'august': '08',
+      'september': '09', 'october': '10', 'november': '11', 'december': '12'
+    };
+
+    const month = monthMap[monthName];
+    if (month) {
+      return `${day}/${month}/${year}`;
+    }
+  }
+
+  // Format: "28-07-2003" or "28.07.2003"
+  const separatorPattern = /(\d{1,2})[-.](\d{1,2})[-.](\d{4})/;
+  match = value.match(separatorPattern);
+  if (match) {
+    const day = match[1].padStart(2, '0');
+    const month = match[2].padStart(2, '0');
+    const year = match[3];
+    return `${day}/${month}/${year}`;
+  }
+
+  // Already in DD/MM/YYYY format
+  const slashPattern = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  match = value.match(slashPattern);
+  if (match) {
+    const day = match[1].padStart(2, '0');
+    const month = match[2].padStart(2, '0');
+    const year = match[3];
+    return `${day}/${month}/${year}`;
+  }
+
+  // ISO format: "2003-07-28"
+  const isoPattern = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+  match = value.match(isoPattern);
+  if (match) {
+    const year = match[1];
+    const month = match[2].padStart(2, '0');
+    const day = match[3].padStart(2, '0');
+    return `${day}/${month}/${year}`;
+  }
+
+  // Return original if no pattern matches
+  return value;
+}
+
+/**
+ * Generalized button click - finds and clicks button by text content
+ * Works with button groups (radio-style buttons, YES/NO buttons, etc.)
+ */
+function clickButtonByValue(element: HTMLButtonElement, value: string): boolean {
+  try {
+    const normalizedValue = value.toLowerCase().trim();
+
+    // Helper: Extract visible text from button
+    const getButtonText = (btn: HTMLButtonElement): string => {
+      return (btn.textContent || btn.innerText || btn.value || btn.getAttribute('aria-label') || '').toLowerCase().trim();
+    };
+
+    // Find container with all buttons in the group
+    const container = element.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="select"]') || element.parentElement;
+
+    if (!container) {
+      console.warn('✗ No container found for button');
+      return false;
+    }
+
+    // Get all buttons in the group
+    const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+    console.log(`  Searching ${buttons.length} buttons for value: "${value}"`);
+
+    // Try to find matching button
+    for (const button of buttons) {
+      if (!(button instanceof HTMLButtonElement)) continue;
+
+      const buttonText = getButtonText(button);
+      console.log(`  Checking button: "${buttonText}"`);
+
+      // Match: exact match, contains, or partial match
+      if (buttonText === normalizedValue ||
+          buttonText.includes(normalizedValue) ||
+          normalizedValue.includes(buttonText)) {
+        console.log(`  ✓ Matched! Clicking button`);
+        button.click();
+        button.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      }
+    }
+
+    console.warn(`✗ No matching button found for: "${value}"`);
+    return false;
+  } catch (error) {
+    console.error('Error clicking button:', error);
+    return false;
+  }
 }
 
 /**
  * Set value to input element with proper event triggering
  */
-function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): boolean {
+function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement, value: string, fieldLabel: string = ''): boolean {
   try {
-    // Store original value
-    const originalValue = element.value;
+    // Special handling for button elements - use generalized click function
+    if (element instanceof HTMLButtonElement) {
+      return clickButtonByValue(element, value);
+    }
 
-    // Set the value
-    element.value = value;
+    // OLD button code - keeping but disabled
+    if (false && element instanceof HTMLButtonElement) {
+      const normalizedValue = value.toLowerCase().trim();
+      
+      // Helper function to normalize date formats for matching
+      const normalizeDate = (dateStr: string): string => {
+        if (!dateStr) return '';
+        // Normalize separators: convert - and . to /
+        let normalized = dateStr.replace(/[-.]/g, '/');
+        // Remove leading/trailing whitespace
+        normalized = normalized.trim();
+        // Handle DD/MM/YYYY, MM/DD/YYYY, YYYY/MM/DD formats
+        return normalized.toLowerCase();
+      };
+      
+      // Normalize date formats if this looks like a date field
+      const isDateField = fieldLabel.toLowerCase().includes('date') || 
+                         fieldLabel.toLowerCase().includes('arrival') ||
+                         fieldLabel.toLowerCase().includes('departure') ||
+                         fieldLabel.toLowerCase().includes('birth');
+      const normalizedValueForMatch = isDateField ? normalizeDate(value) : normalizedValue;
+      
+      // Helper function to extract button text (check multiple sources)
+      // IMPORTANT: Prefer textContent over value attribute to get actual displayed text (e.g., "YES"/"NO" vs "Y"/"N")
+      const getButtonText = (btn: HTMLButtonElement): string => {
+        // Try textContent first (includes nested text like spans with YES/NO)
+        const textContent = (btn.textContent || '').toLowerCase().trim();
+        if (textContent) return textContent;
+        
+        // Try innerText
+        const innerText = (btn.innerText || '').toLowerCase().trim();
+        if (innerText) return innerText;
+        
+        // Try to find nested elements with text (spans, divs, generic elements)
+        // Look for elements with class "button_label_space" or similar
+        const nestedElements = btn.querySelectorAll('span, div, [role="generic"], .generic, .button_label_space');
+        for (const elem of nestedElements) {
+          const elemText = (elem.textContent || '').toLowerCase().trim();
+          if (elemText && elemText.length > 0) {
+            // Prefer longer text (like "YES" over "Y")
+            if (elemText.length > 1) return elemText;
+          }
+        }
+        
+        // Fall back to value attribute if no text found
+        if (btn.value) return btn.value.toLowerCase().trim();
+        
+        // Try aria-label
+        const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase().trim();
+        if (ariaLabel) return ariaLabel;
+        
+        // Try title attribute
+        const title = btn.getAttribute('title')?.toLowerCase().trim();
+        if (title) return title;
+        
+        return '';
+      };
+      
+      // Try to find a button in the same container that matches the value
+      // For button groups, look for common container classes or parent elements
+      let container = element.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="date"], [class*="select"], [class*="radio"]') || element.parentElement;
+      
+      // If no container found, try to find by label association
+      if (!container || container === document.body) {
+        // Try to find associated label and its container
+        const labels = document.querySelectorAll('label');
+        for (const label of labels) {
+          const labelText = (label.textContent || label.innerText || '').toLowerCase();
+          if (labelText.includes(fieldLabel.toLowerCase()) || fieldLabel.toLowerCase().includes(labelText)) {
+            container = label.closest('.selectContainer, .form-group, .form-row, .button-group, [class*="button"], [class*="date"]') || label.parentElement;
+            if (container && container !== document.body) break;
+          }
+        }
+      }
+      
+      if (container && container !== document.body) {
+        const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+        
+        console.log(`  Searching ${buttons.length} buttons for value: "${value}"`);
+        
+        for (const button of buttons) {
+          if (button instanceof HTMLButtonElement) {
+            const buttonValue = button.value?.toLowerCase().trim() || '';
+            const buttonText = getButtonText(button);
+            
+            // Normalize button text (remove extra whitespace)
+            let normalizedButtonText = buttonText.replace(/\s+/g, ' ').trim();
+            
+            // Normalize date format for date buttons
+            if (isDateField) {
+              normalizedButtonText = normalizeDate(normalizedButtonText);
+            }
+            
+            console.log(`  Checking button: value="${buttonValue}", text="${normalizedButtonText}", normalizedValue="${normalizedValueForMatch}"`);
+            
+            // Exact matches
+            let isMatch = false;
+            if (buttonValue === normalizedValueForMatch || normalizedButtonText === normalizedValueForMatch) {
+              isMatch = true;
+            }
+            // Special case for YES/NO buttons (value might be Y/N but text is YES/NO)
+            else if (normalizedValueForMatch === 'yes' || normalizedValueForMatch === 'y') {
+              if (buttonValue === 'y' || normalizedButtonText === 'yes' || normalizedButtonText.includes('yes')) {
+                isMatch = true;
+              }
+            }
+            else if (normalizedValueForMatch === 'no' || normalizedValueForMatch === 'n') {
+              if (buttonValue === 'n' || normalizedButtonText === 'no' || normalizedButtonText.includes('no')) {
+                isMatch = true;
+              }
+            }
+            // For dates, try exact match with normalized dates
+            else if (isDateField) {
+              const normalizedButtonValue = normalizeDate(buttonValue);
+              if (normalizedButtonValue === normalizedValueForMatch || normalizedButtonText === normalizedValueForMatch) {
+                isMatch = true;
+              }
+            }
+            // Partial matches (if value is at least 3 chars)
+            else if (normalizedValueForMatch.length >= 3) {
+              if (normalizedButtonText.includes(normalizedValueForMatch) || normalizedValueForMatch.includes(normalizedButtonText)) {
+                isMatch = true;
+              }
+            }
+            // Special case for gender (exact matching to avoid "male" matching "female")
+            else if (normalizedValue === 'male' || normalizedValue === 'm' || normalizedValue === 'পুরুষ') {
+              if (buttonValue === 'm' || normalizedButtonText === 'male' || normalizedButtonText === 'পুরুষ' || 
+                  normalizedButtonText.includes('male') && !normalizedButtonText.includes('female')) {
+                isMatch = true;
+              }
+            }
+            else if (normalizedValue === 'female' || normalizedValue === 'f' || normalizedValue === 'মহিলা') {
+              if (buttonValue === 'f' || normalizedButtonText === 'female' || normalizedButtonText === 'মহিলা' ||
+                  normalizedButtonText.includes('female')) {
+                isMatch = true;
+              }
+            }
+
+            if (isMatch) {
+              console.log(`  ✓ Matched button, clicking...`);
+              
+              // Get button coordinates for accurate clicking
+              const rect = button.getBoundingClientRect();
+              const centerX = rect.left + rect.width / 2;
+              const centerY = rect.top + rect.height / 2;
+              
+              // Full mouse event sequence (like we do for select elements)
+              button.focus();
+              
+              // Dispatch mousedown
+              button.dispatchEvent(new MouseEvent('mousedown', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY,
+                button: 0,
+                buttons: 1
+              }));
+              
+              // Dispatch mouseup
+              button.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY,
+                button: 0,
+                buttons: 0
+              }));
+              
+              // Call native click
+              button.click();
+              
+              // Dispatch click event
+              button.dispatchEvent(new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY,
+                button: 0,
+                buttons: 0
+              }));
+              
+              // Also dispatch change event
+              button.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+              
+              console.log(`✓ Clicked button: ${button.id || button.className} = "${value}"`);
+              return true;
+            }
+          }
+        }
+      }
+      
+      console.warn(`✗ Could not find matching button for value: "${value}"`);
+      console.warn(`  Searched in container:`, container);
+      return false;
+    }
+
+    // Format date if needed
+    const formattedValue = formatDateForInput(value, fieldLabel);
+
+    // Special handling for select dropdowns
+    if (element instanceof HTMLSelectElement) {
+      const normalizedValue = formattedValue.toLowerCase().trim();
+      const options = Array.from(element.options);
+      let optionFound = false;
+      let selectedOption: HTMLOptionElement | null = null;
+
+      // Method 1: Try exact value match
+      selectedOption = options.find(opt => opt.value === value) || null;
+      if (selectedOption) {
+        element.value = selectedOption.value;
+        optionFound = true;
+      }
+
+      // Method 2: Try case-insensitive value match
+      if (!optionFound) {
+        selectedOption = options.find(opt => opt.value.toLowerCase().trim() === normalizedValue) || null;
+        if (selectedOption) {
+          element.value = selectedOption.value;
+          optionFound = true;
+        }
+      }
+
+      // Method 3: Try exact text content match
+      if (!optionFound) {
+        selectedOption = options.find(opt => {
+          const text = (opt.textContent || opt.innerText || '').trim();
+          return text === value;
+        }) || null;
+        if (selectedOption) {
+          element.value = selectedOption.value;
+          optionFound = true;
+        }
+      }
+
+      // Method 4: Try case-insensitive text content match
+      if (!optionFound) {
+        selectedOption = options.find(opt => {
+          const text = (opt.textContent || opt.innerText || '').toLowerCase().trim();
+          return text === normalizedValue;
+        }) || null;
+        if (selectedOption) {
+          element.value = selectedOption.value;
+          optionFound = true;
+        }
+      }
+
+      // Method 5: Try partial match
+      if (!optionFound) {
+        selectedOption = options.find(opt => {
+          const optValue = opt.value.toLowerCase().trim();
+          return optValue.includes(normalizedValue) && normalizedValue.length >= 3;
+        }) || null;
+        if (selectedOption) {
+          element.value = selectedOption.value;
+          optionFound = true;
+        }
+      }
+
+      // Method 6: Try partial text match
+      if (!optionFound) {
+        selectedOption = options.find(opt => {
+          const text = (opt.textContent || opt.innerText || '').toLowerCase().trim();
+          return text.includes(normalizedValue) && normalizedValue.length >= 3;
+        }) || null;
+        if (selectedOption) {
+          element.value = selectedOption.value;
+          optionFound = true;
+        }
+      }
+
+      // Method 7: Common variations for specific field types
+      if (!optionFound) {
+        if (normalizedValue === 'male' || normalizedValue === 'পুরুষ' || normalizedValue === 'm') {
+          selectedOption = options.find(opt => {
+            const optValue = opt.value.toLowerCase();
+            const optText = (opt.textContent || '').toLowerCase();
+            return optValue.includes('male') || optText.includes('male') ||
+                   optValue.includes('পুরুষ') || optText.includes('পুরুষ') ||
+                   optValue === 'm' || optValue === '1';
+          }) || null;
+        } else if (normalizedValue === 'female' || normalizedValue === 'মহিলা' || normalizedValue === 'f') {
+          selectedOption = options.find(opt => {
+            const optValue = opt.value.toLowerCase();
+            const optText = (opt.textContent || '').toLowerCase();
+            return optValue.includes('female') || optText.includes('female') ||
+                   optValue.includes('মহিলা') || optText.includes('মহিলা') ||
+                   optValue === 'f' || optValue === '2';
+          }) || null;
+        }
+
+        if (selectedOption) {
+          element.value = selectedOption.value;
+          optionFound = true;
+        }
+      }
+
+      if (!optionFound) {
+        console.warn(`Could not find matching option for value: "${value}" in select:`, element);
+        return false;
+      }
+    } else {
+      // Regular input/textarea
+      element.value = formattedValue;
+
+      // For React/Vue/Angular compatibility
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value'
+    )?.set;
+
+      if (nativeInputValueSetter && element instanceof HTMLInputElement) {
+        nativeInputValueSetter.call(element, formattedValue);
+      }
+
+      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        'value'
+      )?.set;
+
+      if (nativeTextAreaValueSetter && element instanceof HTMLTextAreaElement) {
+        nativeTextAreaValueSetter.call(element, formattedValue);
+      }
+    }
 
     // Trigger events to ensure the framework detects the change
     const events = [
@@ -126,18 +789,7 @@ function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSel
 
     events.forEach(event => element.dispatchEvent(event));
 
-    // For React/Vue compatibility
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      'value'
-    )?.set;
-
-    if (nativeInputValueSetter) {
-      nativeInputValueSetter.call(element, value);
-      element.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
-    console.log(`✓ Filled field: ${element.id || element.name} = "${value}"`);
+    console.log(`✓ Filled field: ${element.id || element.name} = "${formattedValue}"`);
     return true;
   } catch (error) {
     console.error(`✗ Failed to fill field: ${element.id || element.name}`, error);
@@ -166,17 +818,27 @@ export async function autoFillForm(
     const fieldId = field.input_field_id;
     const fieldName = field.input_field_name;
     const fieldLabel = field.label;
-    const refId = field.ref_id; // Get ref_id from field
+    // Try to get ref_id from extracted data first (from AI response), then fall back to field ref_id
+    let refId = field.ref_id || '';
+    const extractedRefIds = (window as any).__extractedRefIds || {};
+    if (extractedRefIds[fieldName] || extractedRefIds[fieldId]) {
+      refId = extractedRefIds[fieldName] || extractedRefIds[fieldId] || refId;
+      console.log(`  Using ref_id from extracted data: ${refId}`);
+    }
 
     console.log(`\n--- Processing field: ${fieldLabel} ---`);
     console.log(`  ID: "${fieldId}"`);
     console.log(`  Name: "${fieldName}"`);
+    console.log(`  Label: "${fieldLabel}"`);
     console.log(`  Ref ID: "${refId || 'N/A'}"`);
 
-    // Find the input element (ref_id takes priority)
-    const element = findInputElement(fieldId, fieldName, refId);
+    // Try to find ng-select first (for dropdowns)
+    let ngSelect = findNgSelectByLabel(fieldLabel);
 
-    if (!element) {
+    // Find the input element (ref_id takes priority)
+    const element = findInputElement(fieldId, fieldName, fieldLabel, refId);
+
+    if (!element && !ngSelect) {
       const refInfo = refId ? `, Ref ID: ${refId}` : '';
       const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName}${refInfo})`;
       console.warn(msg);
@@ -185,39 +847,127 @@ export async function autoFillForm(
       continue;
     }
 
-    // Log which method was used to find the element
-    let methodUsed = 'ID/name fallback';
-    if (refId) {
-      const elementByRef = findInputElementByRefId(refId);
-      if (elementByRef && elementByRef === element) {
-        methodUsed = 'ref_id';
-      }
+    if (element) {
+      console.log(`  ✓ Element found:`, element);
     }
-    console.log(`  ✓ Element found via ${methodUsed}:`, element);
+    if (ngSelect) {
+      console.log(`  ✓ ng-select found for: ${fieldLabel}`);
+    }
 
     // Try to find matching value in extracted data
     let value: string | null = null;
     let matchMethod = '';
 
-    // For dynamic extraction, try direct match first (field names should match exactly)
-    if (extractedData[fieldName]) {
-      value = String(extractedData[fieldName]);
+    // PRIORITY 1: Use data_format for date component fields (most specific)
+    const extractedDataAny = extractedData as any;
+    const dataFormat = field.data_format;
+    const dataType = field.data_type;
+
+    if (dataFormat && dataType === 'date') {
+      console.log(`  Using data_format: "${dataFormat}" to extract value`);
+
+      // CRITICAL: Only use DOB for fields that are actually asking for birth date
+      const isDOBField = fieldName.toLowerCase().includes('birth') ||
+                         fieldName.toLowerCase().includes('dob') ||
+                         fieldId.toLowerCase().includes('birth') ||
+                         fieldId.toLowerCase().includes('dob') ||
+                         fieldLabel.toLowerCase().includes('birth');
+
+      if (!isDOBField) {
+        console.log(`  ⚠️ Field "${fieldLabel}" is a date field but NOT a birth date field - skipping DOB extraction`);
+      } else {
+        const dateOfBirth = extractedDataAny.date_of_birth || extractedDataAny.dob;
+
+        if (dateOfBirth) {
+          const dateStr = String(dateOfBirth);
+
+          // Handle date component fields (day_digit_1, month_digit_2, year_digit_3, etc.)
+          if (dataFormat.includes('digit')) {
+            const parts = dateStr.split(/[\/\-\.]/);
+
+            if (dataFormat.startsWith('day_digit_')) {
+              const digitNum = parseInt(dataFormat.replace('day_digit_', ''));
+              const day = parts[0]?.padStart(2, '0') || '';
+              value = day[digitNum - 1] || '';
+              matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+            } else if (dataFormat.startsWith('month_digit_')) {
+              const digitNum = parseInt(dataFormat.replace('month_digit_', ''));
+              const month = parts[1]?.padStart(2, '0') || '';
+              value = month[digitNum - 1] || '';
+              matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+            } else if (dataFormat.startsWith('year_digit_')) {
+              const digitNum = parseInt(dataFormat.replace('year_digit_', ''));
+              const year = parts[2] || '';
+              value = year[digitNum - 1] || '';
+              matchMethod = `date-component (${dataFormat} from "${dateStr}")`;
+            }
+
+            if (value) {
+              console.log(`  ✓ Extracted "${value}" from date "${dateStr}" using format "${dataFormat}"`);
+            }
+          }
+          // Handle full date format conversion (DD/MM/YYYY vs MM/DD/YYYY)
+          else if (dataFormat.includes('/') || dataFormat.includes('-')) {
+            const parts = dateStr.split(/[\/\-\.]/);
+            const day = parts[0]?.padStart(2, '0') || '';
+            const month = parts[1]?.padStart(2, '0') || '';
+            const year = parts[2] || '';
+
+            const separator = dataFormat.includes('/') ? '/' : '-';
+
+            if (dataFormat.startsWith('DD')) {
+              value = `${day}${separator}${month}${separator}${year}`;
+              matchMethod = `date-format (converted to ${dataFormat})`;
+            } else if (dataFormat.startsWith('MM')) {
+              value = `${month}${separator}${day}${separator}${year}`;
+              matchMethod = `date-format (converted to ${dataFormat})`;
+            } else if (dataFormat.startsWith('YYYY')) {
+              value = `${year}${separator}${month}${separator}${day}`;
+              matchMethod = `date-format (converted to ${dataFormat})`;
+            }
+
+            if (value) {
+              console.log(`  ✓ Converted date "${dateStr}" to format "${dataFormat}" = "${value}"`);
+            }
+          }
+        }
+      }
+    }
+
+    // PRIORITY 2: Direct field name/ID match
+    if (!value && fieldName && extractedDataAny[fieldName]) {
+      value = String(extractedDataAny[fieldName]);
       matchMethod = 'exact-name';
       console.log(`  ✓ Direct match by name: "${fieldName}" = "${value}"`);
     }
     // Try by field ID
-    else if (extractedData[fieldId]) {
-      value = String(extractedData[fieldId]);
+    else if (!value && fieldId && extractedDataAny[fieldId]) {
+      value = String(extractedDataAny[fieldId]);
       matchMethod = 'exact-id';
       console.log(`  ✓ Direct match by ID: "${fieldId}" = "${value}"`);
     }
+    // Try by label-based key (for dynamic forms with empty IDs/names)
+    else if (!value) {
+      const labelKey = fieldLabel
+        .toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, '_')
+        .trim();
+
+      if (labelKey && extractedDataAny[labelKey]) {
+        value = String(extractedDataAny[labelKey]);
+        matchMethod = 'label-key';
+        console.log(`  ✓ Direct match by label key: "${labelKey}" = "${value}"`);
+      }
+    }
+
     // For static ExtractedData, try with type assertion
-    else if ('name_english' in extractedData) {
+    if (!value && 'name_english' in extractedData) {
       // This is static ExtractedData, try known fields
-      if (extractedData[fieldName as keyof ExtractedData]) {
+      if (fieldName && extractedData[fieldName as keyof ExtractedData]) {
         value = String(extractedData[fieldName as keyof ExtractedData]);
         matchMethod = 'static-name';
-      } else if (extractedData[fieldId as keyof ExtractedData]) {
+      } else if (fieldId && extractedData[fieldId as keyof ExtractedData]) {
         value = String(extractedData[fieldId as keyof ExtractedData]);
         matchMethod = 'static-id';
       }
@@ -225,18 +975,22 @@ export async function autoFillForm(
 
     // If still no match, try fuzzy matching
     if (!value) {
-      const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const normalizedFieldId = fieldId.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedFieldName = fieldName ? fieldName.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+      const normalizedFieldId = fieldId ? fieldId.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+      const normalizedFieldLabel = fieldLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
 
       console.log(`  Trying fuzzy match...`);
       console.log(`    Normalized name: "${normalizedFieldName}"`);
       console.log(`    Normalized ID: "${normalizedFieldId}"`);
+      console.log(`    Normalized label: "${normalizedFieldLabel}"`);
 
       for (const [key, val] of Object.entries(extractedData)) {
         if (!val) continue; // Skip empty values
 
         const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (normalizedKey === normalizedFieldName || normalizedKey === normalizedFieldId) {
+        if (normalizedKey === normalizedFieldName ||
+            normalizedKey === normalizedFieldId ||
+            normalizedKey === normalizedFieldLabel) {
           value = String(val);
           matchMethod = `fuzzy (matched "${key}")`;
           console.log(`    ✓ Fuzzy match found: ${key} = "${val}"`);
@@ -249,7 +1003,32 @@ export async function autoFillForm(
     console.log(`  Value to fill: "${value}"`);
 
     if (value && value !== '' && value !== 'undefined' && value !== 'null') {
-      const success = setInputValue(element, value);
+      let success = false;
+
+      // Special handling for checkbox fields
+      if (fieldLabel.toLowerCase().includes('i apply for myself') ||
+          fieldLabel.toLowerCase().includes('checkbox')) {
+        const isChecked = value.toLowerCase() === 'true' || value.toLowerCase() === 'yes' || value === '1';
+        success = setCheckboxValue(fieldLabel, isChecked);
+      }
+      // Try ng-select if found
+      else if (ngSelect) {
+        success = setNgSelectValue(ngSelect, value, fieldLabel);
+      }
+      // Regular input
+      else if (element) {
+        // Type guard for Element vs specific input types
+        if (element instanceof HTMLInputElement || 
+            element instanceof HTMLTextAreaElement || 
+            element instanceof HTMLSelectElement || 
+            element instanceof HTMLButtonElement) {
+          success = setInputValue(element, value, fieldLabel);
+        } else if (element.tagName && element.tagName.toLowerCase() === 'ng-select') {
+          // Handle ng-select separately
+          success = setNgSelectValue(element, value, fieldLabel);
+        }
+      }
+
       if (success) {
         const msg = `✓ ${fieldLabel} [${fieldName}]: "${value}" (${matchMethod})`;
         console.log(`  ${msg}`);
@@ -282,7 +1061,8 @@ export async function autoFillForm(
  */
 export async function executeAutoFill(
   formData: FormData,
-  extractedData: ExtractedData | DynamicExtractedData
+  extractedData: ExtractedData | DynamicExtractedData,
+  additionalContext?: string
 ): Promise<{ filled: number; failed: number; details: string[] }> {
   try {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -299,86 +1079,112 @@ export async function executeAutoFill(
     // We need to pass the entire logic as a self-contained function
     const results = await browser.scripting.executeScript({
       target: { tabId: tab.id },
-      func: (formDataArg, extractedDataArg) => {
-        // Helper function to find element by ref_id
-        function findInputElementByRefId(refId: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
-          // Check if __claudeElementMap exists
-          if (!window.__claudeElementMap) {
-            console.warn('__claudeElementMap not found - accessibility tree not initialized');
+      func: (formDataArg: any, extractedDataArg: any, contextArg: string) => {
+        // Helper functions defined inline
+        function findInputByLabel(labelText: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+          if (!labelText) return null;
+          const normalizedLabel = labelText.toLowerCase().trim();
+          const labels = document.querySelectorAll('label');
+
+          for (const label of labels) {
+            const labelContent = label.textContent?.toLowerCase().trim() || '';
+            if (labelContent.includes(normalizedLabel) || normalizedLabel.includes(labelContent)) {
+              const forAttr = label.getAttribute('for');
+              if (forAttr) {
+                const input = document.getElementById(forAttr);
+                if (input && (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement)) {
+                  return input;
+                }
+              }
+
+              const container = label.closest('.col-md-5, .col-md-3, .col-md-12, .vbeop-input, .vbeop-select, .vbeop-checkbox, [class*="form"], [class*="field"]');
+              if (container) {
+                const nativeInput = container.querySelector('input:not([type="hidden"]), textarea, select');
+                if (nativeInput && (nativeInput instanceof HTMLInputElement || nativeInput instanceof HTMLTextAreaElement || nativeInput instanceof HTMLSelectElement)) {
+                  return nativeInput;
+                }
+                const ngSelectInput = container.querySelector('ng-select input, .ng-select input');
+                if (ngSelectInput && ngSelectInput instanceof HTMLInputElement) {
+                  return ngSelectInput;
+                }
+              }
+
+              let nextElement = label.nextElementSibling;
+              while (nextElement) {
+                if (nextElement instanceof HTMLInputElement || nextElement instanceof HTMLTextAreaElement || nextElement instanceof HTMLSelectElement) {
+                  return nextElement;
+                }
+                const input = nextElement.querySelector('input, textarea, select');
+                if (input && (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement)) {
+                  return input;
+                }
+                nextElement = nextElement.nextElementSibling;
+              }
+            }
+          }
             return null;
           }
 
-          // Get WeakRef from map
-          const weakRef = window.__claudeElementMap[refId];
-          if (!weakRef) {
-            console.warn(`Ref ID ${refId} not found in element map`);
-            return null;
-          }
+        function findNgSelectByLabel(labelText: string): Element | null {
+          if (!labelText) return null;
+          const normalizedLabel = labelText.toLowerCase().trim();
+          const labels = document.querySelectorAll('label');
 
-          // Dereference WeakRef to get element
-          const element = weakRef.deref();
-          if (!element) {
-            console.warn(`Element for ref_id ${refId} was garbage collected or removed`);
-            return null;
+          for (const label of labels) {
+            const labelContent = label.textContent?.toLowerCase().trim() || '';
+            if (labelContent.includes(normalizedLabel) || normalizedLabel.includes(labelContent)) {
+              const container = label.closest('.col-md-5, .col-md-3, .col-md-12, .vbeop-select, [class*="form"], [class*="field"]');
+              if (container) {
+                const ngSelect = container.querySelector('ng-select, .ng-select');
+                if (ngSelect) return ngSelect;
+              }
+            }
           }
-
-          // Verify it's an input element
-          if (element instanceof HTMLInputElement || 
-              element instanceof HTMLTextAreaElement || 
-              element instanceof HTMLSelectElement) {
-            return element;
-          }
-
-          console.warn(`Element for ref_id ${refId} is not an input element`);
           return null;
         }
 
-        // Helper function to find input element by various methods
-        // Priority: ref_id > fieldId > fieldName > case-insensitive search
-        function findInputElement(
-          fieldId: string, 
-          fieldName: string, 
-          refId?: string
-        ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
+        function findInputElement(fieldId: string, fieldName: string, fieldLabel: string = '', refId: string = ''): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement | null {
           // PRIORITY 1: Try ref_id first (most reliable)
-          if (refId) {
-            const elementByRef = findInputElementByRefId(refId);
-            if (elementByRef) {
-              console.log(`  ✓ Found element via ref_id: ${refId}`);
+          if (refId && window.__claudeElementMap) {
+            const weakRef = window.__claudeElementMap[refId];
+            if (weakRef) {
+              const elementByRef = weakRef.deref();
+              if (elementByRef && (elementByRef instanceof HTMLInputElement || elementByRef instanceof HTMLTextAreaElement || elementByRef instanceof HTMLSelectElement || elementByRef instanceof HTMLButtonElement)) {
+                console.log('  ✓ Found element via ref_id: ' + refId);
               return elementByRef;
             }
-            console.log(`  ⚠️ ref_id ${refId} failed, falling back to ID/name lookup`);
+            }
           }
 
           // PRIORITY 2: Try by ID
           if (fieldId) {
             const byId = document.getElementById(fieldId);
-            if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement)) {
+            if (byId && (byId instanceof HTMLInputElement || byId instanceof HTMLTextAreaElement || byId instanceof HTMLSelectElement || byId instanceof HTMLButtonElement)) {
               return byId;
             }
           }
 
-          // PRIORITY 3: Try by name attribute
+          // PRIORITY 3: Try by name attribute (including buttons)
           if (fieldName) {
-            const byName = document.querySelector(`input[name="${fieldName}"], textarea[name="${fieldName}"], select[name="${fieldName}"]`);
-            if (byName && (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement)) {
+            const byName = document.querySelector('input[name="' + fieldName + '"], textarea[name="' + fieldName + '"], select[name="' + fieldName + '"], button[name="' + fieldName + '"]');
+            if (byName && (byName instanceof HTMLInputElement || byName instanceof HTMLTextAreaElement || byName instanceof HTMLSelectElement || byName instanceof HTMLButtonElement)) {
               return byName;
             }
           }
 
           // PRIORITY 4: Try by ID as selector
           if (fieldId) {
-            const bySelector = document.querySelector(`input[id="${fieldId}"], textarea[id="${fieldId}"], select[id="${fieldId}"]`);
-            if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement)) {
+            const bySelector = document.querySelector('input[id="' + fieldId + '"], textarea[id="' + fieldId + '"], select[id="' + fieldId + '"], button[id="' + fieldId + '"]');
+            if (bySelector && (bySelector instanceof HTMLInputElement || bySelector instanceof HTMLTextAreaElement || bySelector instanceof HTMLSelectElement || bySelector instanceof HTMLButtonElement)) {
               return bySelector;
             }
           }
 
           // PRIORITY 5: Try case-insensitive search
           if (fieldName) {
-            const allInputs = document.querySelectorAll('input, textarea, select');
+            const allInputs = document.querySelectorAll('input, textarea, select, button');
             for (const input of allInputs) {
-              if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+              if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement || input instanceof HTMLButtonElement) {
                 const name = input.getAttribute('name')?.toLowerCase();
                 const id = input.getAttribute('id')?.toLowerCase();
                 if (name === fieldName.toLowerCase() || id === fieldName.toLowerCase()) {
@@ -388,14 +1194,421 @@ export async function executeAutoFill(
             }
           }
 
+          // PRIORITY 6: Try by label text
+          if (fieldLabel) {
+            const byLabel = findInputByLabel(fieldLabel);
+            if (byLabel) return byLabel;
+          }
+
+          // PRIORITY 7: For button groups, try to find by label text
+          if (fieldName) {
+            const normalizedFieldName = fieldName.toLowerCase();
+            const labels = document.querySelectorAll('label');
+            for (const label of labels) {
+              const labelText = (label.textContent || label.innerText || '').toLowerCase();
+              if (labelText.includes(normalizedFieldName) || normalizedFieldName.includes(labelText)) {
+                const container = label.closest('.selectContainer, .form-group, .form-row') || label.parentElement;
+                if (container) {
+                  const firstButton = container.querySelector('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+                  if (firstButton instanceof HTMLButtonElement) {
+                    console.log('  ✓ Found button group via label: ' + labelText);
+                    return firstButton;
+                  }
+                }
+              }
+            }
+          }
+
           return null;
         }
 
-        function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): boolean {
+        function setNgSelectValue(ngSelect: Element, value: string, fieldLabel: string): boolean {
           try {
+            console.log(`  Attempting to fill ng-select: "${fieldLabel}" with value: "${value}"`);
+            const input = ngSelect.querySelector('input');
+            if (!input) {
+              console.error('  No input found inside ng-select');
+              return false;
+            }
+
+            const container = ngSelect.querySelector('.ng-select-container');
+            if (container) {
+              (container as HTMLElement).click();
+              console.log('  Clicked ng-select to open dropdown');
+            }
+
+            setTimeout(() => {
+              input.value = value;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              console.log('  Typed value into ng-select search');
+
+              setTimeout(() => {
+                const options = document.querySelectorAll('.ng-dropdown-panel .ng-option');
+                console.log(`  Found ${options.length} options`);
+                const normalizedValue = value.toLowerCase().trim();
+
+                for (const option of options) {
+                  const optionText = option.textContent?.toLowerCase().trim() || '';
+                  console.log(`  Checking option: "${optionText}"`);
+
+                  if (optionText.includes(normalizedValue) || normalizedValue.includes(optionText)) {
+                    console.log(`  ✓ Matched option: "${optionText}"`);
+                    (option as HTMLElement).click();
+                    return;
+                  }
+                }
+
+                if (options.length > 0) {
+                  console.log('  Using first available option');
+                  (options[0] as HTMLElement).click();
+                }
+              }, 200);
+            }, 200);
+
+            return true;
+          } catch (error) {
+            console.error('  Error setting ng-select value:', error);
+            return false;
+          }
+        }
+
+        function setCheckboxValue(label: string, checked: boolean): boolean {
+          try {
+            const labels = document.querySelectorAll('label');
+            const normalizedLabel = label.toLowerCase().trim();
+
+            for (const labelEl of labels) {
+              const labelText = labelEl.textContent?.toLowerCase().trim() || '';
+              if (labelText.includes(normalizedLabel)) {
+                const checkbox = labelEl.previousElementSibling || labelEl.querySelector('input[type="checkbox"]');
+                if (checkbox && checkbox instanceof HTMLInputElement && checkbox.type === 'checkbox') {
+                  if (checkbox.checked !== checked) {
+                    checkbox.checked = checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log(`  ✓ Set checkbox "${label}" to ${checked}`);
+                    return true;
+                  }
+                }
+              }
+            }
+            return false;
+          } catch (error) {
+            console.error('  Error setting checkbox:', error);
+            return false;
+          }
+        }
+
+        function formatDateForInput(value: string, fieldLabel: string): string {
+          const isDateField = fieldLabel.toLowerCase().includes('date') ||
+                              fieldLabel.toLowerCase().includes('birth') ||
+                              fieldLabel.toLowerCase().includes('তারিখ');
+
+          if (!isDateField) return value;
+
+          const monthNamePattern = /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i;
+          let match = value.match(monthNamePattern);
+
+          if (match) {
+            const day = match[1].padStart(2, '0');
+            const monthName = match[2].toLowerCase();
+            const year = match[3];
+
+            const monthMap: Record<string, string> = {
+              'january': '01', 'february': '02', 'march': '03', 'april': '04',
+              'may': '05', 'june': '06', 'july': '07', 'august': '08',
+              'september': '09', 'october': '10', 'november': '11', 'december': '12'
+            };
+
+            const month = monthMap[monthName];
+            if (month) {
+              return `${day}/${month}/${year}`;
+            }
+          }
+
+          const separatorPattern = /(\d{1,2})[-.](\d{1,2})[-.](\d{4})/;
+          match = value.match(separatorPattern);
+          if (match) {
+            const day = match[1].padStart(2, '0');
+            const month = match[2].padStart(2, '0');
+            const year = match[3];
+            return `${day}/${month}/${year}`;
+          }
+
+          const slashPattern = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+          match = value.match(slashPattern);
+          if (match) {
+            const day = match[1].padStart(2, '0');
+            const month = match[2].padStart(2, '0');
+            const year = match[3];
+            return `${day}/${month}/${year}`;
+          }
+
+          const isoPattern = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+          match = value.match(isoPattern);
+          if (match) {
+            const year = match[1];
+            const month = match[2].padStart(2, '0');
+            const day = match[3].padStart(2, '0');
+            return `${day}/${month}/${year}`;
+          }
+
+          return value;
+        }
+
+        // Generalized button click function
+        function clickButtonByValue(element, value) {
+          try {
+            const normalizedValue = value.toLowerCase().trim();
+
+            // Helper: Extract visible text from button
+            function getButtonText(btn) {
+              return (btn.textContent || btn.innerText || btn.value || btn.getAttribute('aria-label') || '').toLowerCase().trim();
+            }
+
+            // Find container with all buttons in the group
+            const container = element.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="select"]') || element.parentElement;
+
+            if (!container) {
+              console.warn('✗ No container found for button');
+              return false;
+            }
+
+            // Get all buttons in the group
+            const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+            console.log('  Searching ' + buttons.length + ' buttons for value: "' + value + '"');
+
+            // Try to find matching button
+            for (const button of buttons) {
+              if (!(button instanceof HTMLButtonElement)) continue;
+
+              const buttonText = getButtonText(button);
+              console.log('  Checking button: "' + buttonText + '"');
+
+              // Match: exact match, contains, or partial match
+              if (buttonText === normalizedValue ||
+                  buttonText.includes(normalizedValue) ||
+                  normalizedValue.includes(buttonText)) {
+                console.log('  ✓ Matched! Clicking button');
+                button.click();
+                button.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+              }
+            }
+
+            console.warn('✗ No matching button found for: "' + value + '"');
+            return false;
+          } catch (error) {
+            console.error('Error clicking button:', error);
+            return false;
+          }
+        }
+
+        function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement, value: string, fieldLabel: string = ''): boolean {
+          try {
+            // Special handling for button elements - use generalized click function
+            if (element instanceof HTMLButtonElement) {
+              return clickButtonByValue(element, value);
+            }
+
+            // OLD button code - keeping but disabled
+            if (false && element instanceof HTMLButtonElement) {
+              const normalizedValue = value.toLowerCase().trim();
+              
+              // Helper function to normalize date formats for matching
+              function normalizeDate(dateStr: string): string {
+                if (!dateStr) return '';
+                // Normalize separators: convert - and . to /
+                let normalized = dateStr.replace(/[-.]/g, '/');
+                // Remove leading/trailing whitespace
+                normalized = normalized.trim();
+                return normalized.toLowerCase();
+              }
+              
+              // Normalize date formats if this looks like a date field
+              const isDateField = fieldLabel.toLowerCase().includes('date') || 
+                                 fieldLabel.toLowerCase().includes('arrival') ||
+                                 fieldLabel.toLowerCase().includes('departure') ||
+                                 fieldLabel.toLowerCase().includes('birth');
+              const normalizedValueForMatch = isDateField ? normalizeDate(value) : normalizedValue;
+              
+              // Helper function to extract button text (check multiple sources)
+              // IMPORTANT: Prefer textContent over value attribute to get actual displayed text (e.g., "YES"/"NO" vs "Y"/"N")
+              function getButtonText(btn: HTMLButtonElement): string {
+                // Try textContent first (includes nested text like spans with YES/NO)
+                const textContent = (btn.textContent || '').toLowerCase().trim();
+                if (textContent) return textContent;
+                
+                // Try innerText
+                const innerText = (btn.innerText || '').toLowerCase().trim();
+                if (innerText) return innerText;
+                
+                // Try to find nested elements with text (spans, divs, generic elements)
+                // Look for elements with class "button_label_space" or similar
+                const nestedElements = btn.querySelectorAll('span, div, [role="generic"], .generic, .button_label_space');
+                for (const elem of nestedElements) {
+                  const elemText = (elem.textContent || '').toLowerCase().trim();
+                  if (elemText && elemText.length > 0) {
+                    // Prefer longer text (like "YES" over "Y")
+                    if (elemText.length > 1) return elemText;
+                  }
+                }
+                
+                // Fall back to value attribute if no text found
+                if (btn.value) return btn.value.toLowerCase().trim();
+                
+                const ariaLabel = btn.getAttribute('aria-label')?.toLowerCase().trim();
+                if (ariaLabel) return ariaLabel;
+                const title = btn.getAttribute('title')?.toLowerCase().trim();
+                if (title) return title;
+                return '';
+              }
+              
+              // Try to find a button in the same container that matches the value
+              // For button groups, look for common container classes or parent elements
+              let container = element.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="date"], [class*="select"], [class*="radio"]') || element.parentElement;
+              
+              // If no container found, try to find by label association
+              if (!container || container === document.body) {
+                // Try to find associated label and its container
+                const labels = document.querySelectorAll('label');
+                for (const label of labels) {
+                  const labelText = (label.textContent || label.innerText || '').toLowerCase();
+                  if (labelText.includes(fieldLabel.toLowerCase()) || fieldLabel.toLowerCase().includes(labelText)) {
+                    container = label.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="date"], [class*="radio"]') || label.parentElement;
+                    if (container && container !== document.body) break;
+                  }
+                }
+              }
+              
+              if (container && container !== document.body) {
+                const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+                
+                console.log('  Searching ' + buttons.length + ' buttons for value: "' + value + '"');
+                
+                for (const button of buttons) {
+                  if (button instanceof HTMLButtonElement) {
+                    const buttonValue = (button.value || '').toLowerCase().trim();
+                    const buttonText = getButtonText(button);
+                    let normalizedButtonText = buttonText.replace(/\s+/g, ' ').trim();
+                    
+                    // Normalize date format for date buttons
+                    if (isDateField) {
+                      normalizedButtonText = normalizeDate(normalizedButtonText);
+                    }
+                    
+                    console.log('  Checking button: value="' + buttonValue + '", text="' + normalizedButtonText + '", normalizedValue="' + normalizedValueForMatch + '"');
+                    
+                    // Exact matches
+                    let isMatch = false;
+                    if (buttonValue === normalizedValueForMatch || normalizedButtonText === normalizedValueForMatch) {
+                      isMatch = true;
+                    }
+                    // Special case for YES/NO buttons (value might be Y/N but text is YES/NO)
+                    else if (normalizedValueForMatch === 'yes' || normalizedValueForMatch === 'y') {
+                      if (buttonValue === 'y' || normalizedButtonText === 'yes' || normalizedButtonText.includes('yes')) {
+                        isMatch = true;
+                      }
+                    }
+                    else if (normalizedValueForMatch === 'no' || normalizedValueForMatch === 'n') {
+                      if (buttonValue === 'n' || normalizedButtonText === 'no' || normalizedButtonText.includes('no')) {
+                        isMatch = true;
+                      }
+                    }
+                    // For dates, try exact match with normalized dates
+                    else if (isDateField) {
+                      const normalizedButtonValue = normalizeDate(buttonValue);
+                      if (normalizedButtonValue === normalizedValueForMatch || normalizedButtonText === normalizedValueForMatch) {
+                        isMatch = true;
+                      }
+                    }
+                    // Partial matches (if value is at least 3 chars)
+                    else if (normalizedValueForMatch.length >= 3) {
+                      if (normalizedButtonText.includes(normalizedValueForMatch) || normalizedValueForMatch.includes(normalizedButtonText)) {
+                        isMatch = true;
+                      }
+                    }
+                    // Special case for gender
+                    else if (normalizedValue === 'male' || normalizedValue === 'm' || normalizedValue === 'পুরুষ') {
+                      if (buttonValue === 'm' || normalizedButtonText === 'male' || normalizedButtonText === 'পুরুষ' || 
+                          (normalizedButtonText.includes('male') && !normalizedButtonText.includes('female'))) {
+                        isMatch = true;
+                      }
+                    }
+                    else if (normalizedValue === 'female' || normalizedValue === 'f' || normalizedValue === 'মহিলা') {
+                      if (buttonValue === 'f' || normalizedButtonText === 'female' || normalizedButtonText === 'মহিলা' ||
+                          normalizedButtonText.includes('female')) {
+                        isMatch = true;
+                      }
+                    }
+
+                    if (isMatch) {
+                      console.log('  ✓ Matched button, clicking...');
+                      
+                      // Get button coordinates for accurate clicking
+                      const rect = button.getBoundingClientRect();
+                      const centerX = rect.left + rect.width / 2;
+                      const centerY = rect.top + rect.height / 2;
+                      
+                      // Full mouse event sequence
+                      button.focus();
+                      
+                      // Dispatch mousedown
+                      button.dispatchEvent(new MouseEvent('mousedown', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 0,
+                        buttons: 1
+                      }));
+                      
+                      // Dispatch mouseup
+                      button.dispatchEvent(new MouseEvent('mouseup', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 0,
+                        buttons: 0
+                      }));
+                      
+                      // Call native click
+                      button.click();
+                      
+                      // Dispatch click event
+                      button.dispatchEvent(new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: centerX,
+                        clientY: centerY,
+                        button: 0,
+                        buttons: 0
+                      }));
+                      
+                      // Also dispatch change event
+                      button.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                      
+                      console.log('✓ Clicked button: ' + (button.id || button.className) + ' = "' + value + '"');
+                      return true;
+                    }
+                  }
+                }
+              }
+              
+              console.warn('✗ Could not find matching button for value: "' + value + '"');
+              return false;
+            }
+
+            // Format date if needed
+            const formattedValue = formatDateForInput(value, fieldLabel);
+
             // Special handling for select dropdowns
             if (element instanceof HTMLSelectElement) {
-              const normalizedValue = value.toLowerCase().trim();
+              const normalizedValue = formattedValue.toLowerCase().trim();
               const options = Array.from(element.options);
               let optionFound = false;
               let selectedOption: HTMLOptionElement | null = null;
@@ -537,7 +1750,7 @@ export async function executeAutoFill(
               }
             } else {
               // Regular input/textarea
-              element.value = value;
+              element.value = formattedValue;
 
               const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
                 window.HTMLInputElement.prototype,
@@ -545,7 +1758,7 @@ export async function executeAutoFill(
               )?.set;
 
               if (nativeInputValueSetter && element instanceof HTMLInputElement) {
-                nativeInputValueSetter.call(element, value);
+                nativeInputValueSetter.call(element, formattedValue);
               }
 
               const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
@@ -554,7 +1767,7 @@ export async function executeAutoFill(
               )?.set;
 
               if (nativeTextAreaValueSetter && element instanceof HTMLTextAreaElement) {
-                nativeTextAreaValueSetter.call(element, value);
+                nativeTextAreaValueSetter.call(element, formattedValue);
               }
             }
 
@@ -587,60 +1800,145 @@ export async function executeAutoFill(
           const fieldId = field.input_field_id;
           const fieldName = field.input_field_name;
           const fieldLabel = field.label;
-          const refId = field.ref_id; // Get ref_id from field
 
           console.log(`\n--- Processing field: ${fieldLabel} ---`);
           console.log(`  ID: "${fieldId}"`);
           console.log(`  Name: "${fieldName}"`);
-          console.log(`  Ref ID: "${refId || 'N/A'}"`);
+          console.log(`  Label: "${fieldLabel}"`);
 
-          const element = findInputElement(fieldId, fieldName, refId);
+          const ngSelect = findNgSelectByLabel(fieldLabel);
+          // Try to get ref_id from extracted data first (from AI response), then fall back to field ref_id
+          let refId = field.ref_id || '';
+          const extractedRefIds = (window as any).__extractedRefIds || {};
+          if (extractedRefIds[fieldName] || extractedRefIds[fieldId]) {
+            refId = extractedRefIds[fieldName] || extractedRefIds[fieldId] || refId;
+            console.log('  Using ref_id from extracted data: ' + refId);
+          }
+          const element = findInputElement(fieldId, fieldName, fieldLabel, refId);
 
-          if (!element) {
-            const refInfo = refId ? `, Ref ID: ${refId}` : '';
-            const msg = `⚠️ Field not found in DOM: ${fieldLabel} (ID: ${fieldId}, Name: ${fieldName}${refInfo})`;
+          if (!element && !ngSelect) {
+            const refInfo = refId ? ', Ref ID: ' + refId : '';
+            const msg = '⚠️ Field not found in DOM: ' + fieldLabel + ' (ID: ' + fieldId + ', Name: ' + fieldName + refInfo + ')';
             console.warn(msg);
             details.push(msg);
             failed++;
             continue;
           }
 
-          // Log which method was used to find the element
-          let methodUsed = 'ID/name fallback';
-          if (refId) {
-            const elementByRef = findInputElementByRefId(refId);
-            if (elementByRef && elementByRef === element) {
-              methodUsed = 'ref_id';
-            }
+          if (element) {
+            console.log(`  ✓ Element found:`, element);
           }
-          console.log(`  ✓ Element found via ${methodUsed}:`, element);
+          if (ngSelect) {
+            console.log(`  ✓ ng-select found for: ${fieldLabel}`);
+          }
 
           let value: string | null = null;
           let matchMethod = '';
 
-          if (extractedDataArg[fieldName]) {
+          // Use context hints to improve field matching if provided
+          const contextHints = (contextArg && contextArg.trim()) ? contextArg.toLowerCase() : '';
+          const normalizedFieldLabel = fieldLabel.toLowerCase();
+          const normalizedFieldName = fieldName.toLowerCase();
+          const normalizedFieldId = fieldId.toLowerCase();
+          const contextMentionsField = contextArg && contextArg.trim() && (
+            contextHints.includes(normalizedFieldLabel) ||
+            contextHints.includes(normalizedFieldName) ||
+            contextHints.includes(normalizedFieldId)
+          );
+
+          // PRIORITY 0.5: Use context hints to find alternative field names
+          if (contextArg && contextArg.trim() && contextMentionsField) {
+            const contextLines = contextArg.split('\n');
+            for (const line of contextLines) {
+              const lowerLine = line.toLowerCase();
+              if (lowerLine.includes(normalizedFieldLabel) || lowerLine.includes(normalizedFieldName)) {
+                // Look for patterns like "field X might be labeled as Y"
+                const altNameMatch = line.match(/(?:labeled as|called|named|is|maps to|use)\s+['"]?([^'",\n]+)['"]?/i);
+                if (altNameMatch && altNameMatch[1]) {
+                  const altName = altNameMatch[1].trim().toLowerCase();
+                  // Try matching with alternative name
+                  for (const key in extractedDataArg) {
+                    if (key.toLowerCase() === altName || key.toLowerCase().includes(altName)) {
+                      if (extractedDataArg[key] !== undefined && extractedDataArg[key] !== null && extractedDataArg[key] !== '') {
+                        value = String(extractedDataArg[key]);
+                        matchMethod = 'context hint: "' + altName + '"';
+                        console.log('  ✓ Found via context hint: ' + key + ' = "' + value + '"');
+                        break;
+                      }
+                    }
+                  }
+                  if (value) break;
+                }
+              }
+            }
+          }
+
+          // Try by field name
+          if (!value && fieldName && extractedDataArg[fieldName]) {
             value = String(extractedDataArg[fieldName]);
             matchMethod = 'exact-name';
-          } else if (extractedDataArg[fieldId]) {
+          }
+          // Try by field ID
+          else if (!value && fieldId && extractedDataArg[fieldId]) {
             value = String(extractedDataArg[fieldId]);
             matchMethod = 'exact-id';
-          } else {
-            const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
-            const normalizedFieldId = fieldId.toLowerCase().replace(/[^a-z0-9]/g, '');
+          }
+          // Try by label-based key (for dynamic forms with empty IDs/names)
+          else {
+            const labelKey = fieldLabel
+              .toLowerCase()
+              .replace(/[^\w\s]/g, '')
+              .replace(/\s+/g, '_')
+              .trim();
+
+            if (labelKey && extractedDataArg[labelKey]) {
+              value = String(extractedDataArg[labelKey]);
+              matchMethod = 'label-key';
+              console.log(`  ✓ Direct match by label key: "${labelKey}" = "${value}"`);
+            }
+          }
+
+          // If still no match, try fuzzy matching
+          if (!value) {
+            const normalizedFieldName = fieldName ? fieldName.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+            const normalizedFieldId = fieldId ? fieldId.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+            const normalizedFieldLabel = fieldLabel.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+            console.log(`  Trying fuzzy match...`);
+            console.log(`    Normalized name: "${normalizedFieldName}"`);
+            console.log(`    Normalized ID: "${normalizedFieldId}"`);
+            console.log(`    Normalized label: "${normalizedFieldLabel}"`);
 
             for (const [key, val] of Object.entries(extractedDataArg)) {
               if (!val) continue;
               const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-              if (normalizedKey === normalizedFieldName || normalizedKey === normalizedFieldId) {
+              if (normalizedKey === normalizedFieldName ||
+                  normalizedKey === normalizedFieldId ||
+                  normalizedKey === normalizedFieldLabel) {
                 value = String(val);
                 matchMethod = `fuzzy (matched "${key}")`;
+                console.log(`    ✓ Fuzzy match found: ${key} = "${val}"`);
                 break;
               }
             }
           }
 
+          console.log(`  Match method: ${matchMethod || 'NONE'}`);
+          console.log(`  Value to fill: "${value}"`);
+
           if (value && value !== '' && value !== 'undefined' && value !== 'null') {
-            const success = setInputValue(element, value);
+            let success = false;
+
+            if (fieldLabel.toLowerCase().includes('i apply for myself') ||
+                fieldLabel.toLowerCase().includes('checkbox')) {
+              const isChecked = value.toLowerCase() === 'true' || value.toLowerCase() === 'yes' || value === '1';
+              success = setCheckboxValue(fieldLabel, isChecked);
+            } else if (ngSelect) {
+              success = setNgSelectValue(ngSelect, value, fieldLabel);
+            } else if (element) {
+              success = setInputValue(element, value, fieldLabel);
+            }
+
             if (success) {
               const msg = `✓ ${fieldLabel} [${fieldName}]: "${value}" (${matchMethod})`;
               console.log(`  ${msg}`);
@@ -666,7 +1964,7 @@ export async function executeAutoFill(
 
         return { filled, failed, details };
       },
-      args: [formData, extractedData],
+      args: [formData, extractedData, additionalContext || ''],
     });
 
     console.log('Script execution results:', results);
@@ -685,3 +1983,5 @@ export async function executeAutoFill(
     throw error;
   }
 }
+
+

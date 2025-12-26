@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -17,6 +18,7 @@ import { processDocuments, type ExtractedData } from "./lib/gemini";
 import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynamicExtraction";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
+import { getPageAccessibilityTree } from "./lib/formExtraction";
 import { cn } from "@/lib/utils";
 
 // MVC PATTERN: Import controller
@@ -64,6 +66,7 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
   const [processingError, setProcessingError] = useState<string>("");
   const [dynamicDocuments, setDynamicDocuments] = useState<DocumentUpload[]>([]);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [formFillContext, setFormFillContext] = useState<string>("");
   
   // Dialog states
   const [offlineWarningDialogOpen, setOfflineWarningDialogOpen] = useState(false);
@@ -237,12 +240,24 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
       let extractedData: ExtractedData | DynamicExtractedData;
 
       if (detectedFormData) {
+        // Get accessibility tree for better context during extraction
+        let accessibilityTree: string | undefined;
+        try {
+          accessibilityTree = await getPageAccessibilityTree();
+          console.log('[UploadPage] Accessibility tree retrieved for document extraction');
+        } catch (error) {
+          console.warn('[UploadPage] Failed to get accessibility tree, continuing without it:', error);
+          // Continue without tree - extraction will still work with field descriptions
+        }
+
         // Use dynamic extraction based on detected form fields
         extractedData = await processDynamicDocuments(
           uploadedFiles,
           detectedFormData,
           apiKey,
           model || "gemini-2.5-flash",
+          accessibilityTree,
+          formFillContext.trim() || undefined,
           (event) => {
             // Convert dynamic progress to standard progress format
             if ((window as any).__progressHandler) {
@@ -394,6 +409,28 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
                 </div>
               </div>
             )}
+
+            {/* Form Fill Context Textarea */}
+            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Form Fill Context (Optional)
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  Provide context about the form fields to help AI extract data more accurately (e.g., "Field 'nationality' might be labeled as 'Country'", "Use 'passport_number' for 'document_id'", etc.)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <Textarea
+                  placeholder="E.g., Field 'nationality' might be labeled as 'Country' in the form, or use 'passport_number' for 'document_id' field"
+                  value={formFillContext}
+                  onChange={(e) => setFormFillContext(e.target.value)}
+                  className="min-h-[80px] resize-none text-sm"
+                  rows={3}
+                />
+              </CardContent>
+            </Card>
 
             {/* Document Upload Cards */}
             {displayDocuments.map((doc) => (

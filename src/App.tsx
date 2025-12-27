@@ -342,6 +342,13 @@ export default function App() {
             });
             transitionToPage("toonconfirmation");
           }}
+          onDataChange={(data) => {
+            // Update state manager without navigation when user clicks Save button
+            stateManager.updateContext({
+              extractedData: data as ExtractedData,
+            });
+            setStateContext({ ...stateManager.getContext() });
+          }}
           initialData={stateManager.getContext().extractedData || undefined}
         />
       </>

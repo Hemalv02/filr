@@ -16,10 +16,11 @@ interface TraditionalFormPageProps {
   onSave: (data: ExtractedData) => void;
   onProcessComplete: (data: ExtractedData) => void;
   onToonImport?: (importedData: Partial<ExtractedData>, existingData: Partial<ExtractedData>) => void;
+  onDataChange?: (data: Partial<ExtractedData>) => void; // New callback for updating state manager without navigation
   initialData?: Partial<ExtractedData>;
 }
 
-export default function TraditionalFormPage({ onBack, onSave, onProcessComplete, onToonImport, initialData }: TraditionalFormPageProps) {
+export default function TraditionalFormPage({ onBack, onSave, onProcessComplete, onToonImport, onDataChange, initialData }: TraditionalFormPageProps) {
   const [data, setData] = useState<Partial<ExtractedData>>({
     name_english: "",
     name_bengali: "",
@@ -50,43 +51,37 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     driving_license_number: "",
   });
 
-  // Update form data when initialData changes (after coming back from Results)
+  // Load data on mount - priority: initialData > localStorage
   useEffect(() => {
     if (initialData && Object.keys(initialData).length > 0) {
-      // Merge initialData with existing data
-      setData(prevData => {
-        const merged = { ...prevData };
-        Object.entries(initialData).forEach(([key, value]) => {
-          // Only update if new value is not empty/null/undefined
-          if (value && value !== "" && value !== "undefined" && value !== "null") {
-            merged[key as keyof ExtractedData] = value;
-          }
-        });
-        return merged;
+      // If initialData is provided (from TOON import or previous extraction), use it
+      const newData: Partial<ExtractedData> = {};
+      Object.entries(initialData).forEach(([key, value]) => {
+        // Only update if new value is not empty/null/undefined
+        if (value && value !== "" && value !== "undefined" && value !== "null") {
+          newData[key as keyof ExtractedData] = value;
+        }
       });
-    }
-  }, [initialData]);
-
-  // Load saved data from localStorage on component mount
-  useEffect(() => {
-    try {
-      const savedData = localStorage.getItem('filr_form_data');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        setData(prevData => {
-          const merged = { ...prevData };
+      setData(newData);
+    } else {
+      // Otherwise, load from localStorage
+      try {
+        const savedData = localStorage.getItem('filr_form_data');
+        if (savedData) {
+          const parsedData = JSON.parse(savedData);
+          const newData: Partial<ExtractedData> = {};
           Object.entries(parsedData).forEach(([key, value]) => {
             if (value && value !== "" && value !== "undefined" && value !== "null") {
-              merged[key as keyof ExtractedData] = value as string;
+              newData[key as keyof ExtractedData] = value as string;
             }
           });
-          return merged;
-        });
+          setData(newData);
+        }
+      } catch (error) {
+        console.error('Failed to load saved data from localStorage:', error);
       }
-    } catch (error) {
-      console.error('Failed to load saved data from localStorage:', error);
     }
-  }, []);
+  }, [JSON.stringify(initialData)]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const toonInputRef = useRef<HTMLInputElement | null>(null);
@@ -330,6 +325,11 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     // Save to localStorage
     try {
       localStorage.setItem('filr_form_data', JSON.stringify(filteredData));
+
+      // Update the state manager to keep it in sync with localStorage
+      if (onDataChange) {
+        onDataChange(filteredData);
+      }
 
       // Show success notification
       const notifications = OfflineNotifications.getInstance();

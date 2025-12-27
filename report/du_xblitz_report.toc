@@ -1,0 +1,266 @@
+\contentsline {section}{\numberline {1}Introduction}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Problem Definition \& Context}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Motivation}{2}{subsection.1.2}%
+\contentsline {paragraph}{Public Service Efficiency}{2}{paragraph*.1}%
+\contentsline {paragraph}{Time and Resource Savings}{3}{paragraph*.2}%
+\contentsline {paragraph}{Error Reduction}{3}{paragraph*.3}%
+\contentsline {paragraph}{Accessibility and Inclusion}{3}{paragraph*.4}%
+\contentsline {paragraph}{Educational Value}{3}{paragraph*.5}%
+\contentsline {subsection}{\numberline {1.3}Core Features}{3}{subsection.1.3}%
+\contentsline {paragraph}{Intelligent Form Detection}{3}{paragraph*.6}%
+\contentsline {paragraph}{Dynamic Document Requirement Analysis}{3}{paragraph*.7}%
+\contentsline {paragraph}{Multi-Document Processing}{3}{paragraph*.8}%
+\contentsline {paragraph}{Dual Extraction Modes}{3}{paragraph*.9}%
+\contentsline {paragraph}{Intelligent Form Filling}{4}{paragraph*.10}%
+\contentsline {paragraph}{Offline Processing \& Synchronization}{4}{paragraph*.11}%
+\contentsline {paragraph}{User-Friendly Interface}{4}{paragraph*.12}%
+\contentsline {paragraph}{Data Security \& Privacy}{4}{paragraph*.13}%
+\contentsline {subsection}{\numberline {1.4}Tools, Technologies \& Frameworks Used}{4}{subsection.1.4}%
+\contentsline {paragraph}{Frontend Framework \& Libraries}{4}{paragraph*.14}%
+\contentsline {paragraph}{UI Components \& Styling}{5}{paragraph*.15}%
+\contentsline {paragraph}{Browser Extension Framework}{5}{paragraph*.16}%
+\contentsline {paragraph}{AI \& Machine Learning}{5}{paragraph*.17}%
+\contentsline {paragraph}{Data Storage \& Management}{5}{paragraph*.18}%
+\contentsline {paragraph}{Development Tools}{5}{paragraph*.19}%
+\contentsline {paragraph}{Design Patterns Implementation}{5}{paragraph*.20}%
+\contentsline {subsection}{\numberline {1.5}Individual Responsibilities}{6}{subsection.1.5}%
+\contentsline {paragraph}{Nafis Shyan (Roll 10)}{6}{paragraph*.21}%
+\contentsline {paragraph}{Anirban Roy Sourov (Roll 32)}{6}{paragraph*.22}%
+\contentsline {paragraph}{Mominul Islam Hemal (Roll 40)}{7}{paragraph*.23}%
+\contentsline {paragraph}{Collaborative Efforts}{7}{paragraph*.24}%
+\contentsline {section}{\numberline {2}System Overview}{8}{section.2}%
+\contentsline {subsection}{\numberline {2.1}System Architecture}{8}{subsection.2.1}%
+\contentsline {subsubsection}{\numberline {2.1.1}High-Level Architecture}{8}{subsubsection.2.1.1}%
+\contentsline {paragraph}{Presentation Layer}{8}{paragraph*.26}%
+\contentsline {paragraph}{Application Layer}{8}{paragraph*.27}%
+\contentsline {paragraph}{Business Logic Layer}{9}{paragraph*.28}%
+\contentsline {paragraph}{Data Access Layer}{9}{paragraph*.29}%
+\contentsline {subsubsection}{\numberline {2.1.2}Component Interaction Architecture}{9}{subsubsection.2.1.2}%
+\contentsline {paragraph}{Sidepanel Component}{10}{paragraph*.31}%
+\contentsline {paragraph}{Background Script}{10}{paragraph*.32}%
+\contentsline {paragraph}{Content Script}{10}{paragraph*.33}%
+\contentsline {subsubsection}{\numberline {2.1.3}Data Flow Architecture}{10}{subsubsection.2.1.3}%
+\contentsline {subsection}{\numberline {2.2}Use Case Diagrams}{10}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}Primary Use Cases}{11}{subsubsection.2.2.1}%
+\contentsline {paragraph}{Form Detection Use Cases}{11}{paragraph*.36}%
+\contentsline {paragraph}{Document Processing Use Cases}{11}{paragraph*.37}%
+\contentsline {paragraph}{Form Filling Use Cases}{11}{paragraph*.38}%
+\contentsline {paragraph}{Configuration Use Cases}{11}{paragraph*.39}%
+\contentsline {paragraph}{Offline Processing Use Cases}{11}{paragraph*.40}%
+\contentsline {subsubsection}{\numberline {2.2.2}Extended Use Case Diagram with System Actors}{12}{subsubsection.2.2.2}%
+\contentsline {paragraph}{Use Case Relationships}{12}{paragraph*.42}%
+\contentsline {subsubsection}{\numberline {2.2.3}Use Case Descriptions}{12}{subsubsection.2.2.3}%
+\contentsline {section}{\numberline {3}Design Patterns Used}{13}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Design Philosophy \& Rationale}{13}{subsection.3.1}%
+\contentsline {paragraph}{Separation of Concerns}{13}{paragraph*.44}%
+\contentsline {paragraph}{Open/Closed Principle}{13}{paragraph*.45}%
+\contentsline {paragraph}{Single Responsibility}{13}{paragraph*.46}%
+\contentsline {paragraph}{Loose Coupling}{13}{paragraph*.47}%
+\contentsline {paragraph}{DRY (Don't Repeat Yourself)}{13}{paragraph*.48}%
+\contentsline {paragraph}{Testability}{13}{paragraph*.49}%
+\contentsline {subsection}{\numberline {3.2}MVC (Model-View-Controller) Pattern}{13}{subsection.3.2}%
+\contentsline {subsubsection}{\numberline {3.2.1}Problem Addressed}{13}{subsubsection.3.2.1}%
+\contentsline {subsubsection}{\numberline {3.2.2}Why This Pattern?}{14}{subsubsection.3.2.2}%
+\contentsline {subsubsection}{\numberline {3.2.3}UML Diagram}{14}{subsubsection.3.2.3}%
+\contentsline {subsubsection}{\numberline {3.2.4}Implementation Snippet}{14}{subsubsection.3.2.4}%
+\contentsline {subsubsection}{\numberline {3.2.5}Benefits Achieved}{15}{subsubsection.3.2.5}%
+\contentsline {subsubsection}{\numberline {3.2.6}Limitations \& Trade-offs}{15}{subsubsection.3.2.6}%
+\contentsline {subsection}{\numberline {3.3}Chain of Responsibility Pattern}{16}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}Problem Addressed}{16}{subsubsection.3.3.1}%
+\contentsline {subsubsection}{\numberline {3.3.2}Why This Pattern?}{16}{subsubsection.3.3.2}%
+\contentsline {subsubsection}{\numberline {3.3.3}UML Diagram}{17}{subsubsection.3.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.4}Implementation Snippet}{17}{subsubsection.3.3.4}%
+\contentsline {subsubsection}{\numberline {3.3.5}Benefits Achieved}{18}{subsubsection.3.3.5}%
+\contentsline {subsubsection}{\numberline {3.3.6}Limitations \& Trade-offs}{18}{subsubsection.3.3.6}%
+\contentsline {subsection}{\numberline {3.4}Observer Pattern}{19}{subsection.3.4}%
+\contentsline {subsubsection}{\numberline {3.4.1}Problem Addressed}{19}{subsubsection.3.4.1}%
+\contentsline {subsubsection}{\numberline {3.4.2}Why This Pattern?}{19}{subsubsection.3.4.2}%
+\contentsline {subsubsection}{\numberline {3.4.3}UML Diagram}{19}{subsubsection.3.4.3}%
+\contentsline {subsubsection}{\numberline {3.4.4}Implementation Snippet}{19}{subsubsection.3.4.4}%
+\contentsline {subsubsection}{\numberline {3.4.5}Benefits Achieved}{20}{subsubsection.3.4.5}%
+\contentsline {subsubsection}{\numberline {3.4.6}Limitations \& Trade-offs}{21}{subsubsection.3.4.6}%
+\contentsline {subsection}{\numberline {3.5}Factory Pattern}{21}{subsection.3.5}%
+\contentsline {subsubsection}{\numberline {3.5.1}Problem Addressed}{21}{subsubsection.3.5.1}%
+\contentsline {subsubsection}{\numberline {3.5.2}Why This Pattern?}{21}{subsubsection.3.5.2}%
+\contentsline {subsubsection}{\numberline {3.5.3}UML Diagram}{21}{subsubsection.3.5.3}%
+\contentsline {subsubsection}{\numberline {3.5.4}Implementation Snippet}{22}{subsubsection.3.5.4}%
+\contentsline {subsubsection}{\numberline {3.5.5}Benefits Achieved}{22}{subsubsection.3.5.5}%
+\contentsline {subsubsection}{\numberline {3.5.6}Limitations \& Trade-offs}{23}{subsubsection.3.5.6}%
+\contentsline {subsection}{\numberline {3.6}Singleton Pattern}{23}{subsection.3.6}%
+\contentsline {subsubsection}{\numberline {3.6.1}Problem Addressed}{23}{subsubsection.3.6.1}%
+\contentsline {subsubsection}{\numberline {3.6.2}Why This Pattern?}{23}{subsubsection.3.6.2}%
+\contentsline {subsubsection}{\numberline {3.6.3}UML Diagram}{23}{subsubsection.3.6.3}%
+\contentsline {subsubsection}{\numberline {3.6.4}Implementation Snippet}{24}{subsubsection.3.6.4}%
+\contentsline {subsubsection}{\numberline {3.6.5}Benefits Achieved}{24}{subsubsection.3.6.5}%
+\contentsline {subsubsection}{\numberline {3.6.6}Limitations \& Trade-offs}{24}{subsubsection.3.6.6}%
+\contentsline {subsection}{\numberline {3.7}State Pattern}{25}{subsection.3.7}%
+\contentsline {subsubsection}{\numberline {3.7.1}Problem Addressed}{25}{subsubsection.3.7.1}%
+\contentsline {subsubsection}{\numberline {3.7.2}Why This Pattern?}{25}{subsubsection.3.7.2}%
+\contentsline {subsubsection}{\numberline {3.7.3}UML Diagram}{26}{subsubsection.3.7.3}%
+\contentsline {subsubsection}{\numberline {3.7.4}Implementation Snippet}{27}{subsubsection.3.7.4}%
+\contentsline {subsubsection}{\numberline {3.7.5}Benefits Achieved}{27}{subsubsection.3.7.5}%
+\contentsline {subsubsection}{\numberline {3.7.6}Limitations \& Trade-offs}{28}{subsubsection.3.7.6}%
+\contentsline {subsection}{\numberline {3.8}Decorator Pattern}{28}{subsection.3.8}%
+\contentsline {subsubsection}{\numberline {3.8.1}Problem Addressed}{28}{subsubsection.3.8.1}%
+\contentsline {subsubsection}{\numberline {3.8.2}Why This Pattern?}{28}{subsubsection.3.8.2}%
+\contentsline {subsubsection}{\numberline {3.8.3}UML Diagram}{28}{subsubsection.3.8.3}%
+\contentsline {subsubsection}{\numberline {3.8.4}Implementation Snippet}{29}{subsubsection.3.8.4}%
+\contentsline {subsubsection}{\numberline {3.8.5}Benefits Achieved}{29}{subsubsection.3.8.5}%
+\contentsline {subsubsection}{\numberline {3.8.6}Limitations \& Trade-offs}{29}{subsubsection.3.8.6}%
+\contentsline {subsection}{\numberline {3.9}Strategy Pattern}{30}{subsection.3.9}%
+\contentsline {subsubsection}{\numberline {3.9.1}Problem Addressed}{30}{subsubsection.3.9.1}%
+\contentsline {subsubsection}{\numberline {3.9.2}Why This Pattern?}{30}{subsubsection.3.9.2}%
+\contentsline {subsubsection}{\numberline {3.9.3}UML Diagram}{30}{subsubsection.3.9.3}%
+\contentsline {subsubsection}{\numberline {3.9.4}Implementation Snippet}{31}{subsubsection.3.9.4}%
+\contentsline {subsubsection}{\numberline {3.9.5}Benefits Achieved}{31}{subsubsection.3.9.5}%
+\contentsline {subsubsection}{\numberline {3.9.6}Limitations \& Trade-offs}{32}{subsubsection.3.9.6}%
+\contentsline {subsection}{\numberline {3.10}Summary of Design Patterns}{32}{subsection.3.10}%
+\contentsline {section}{\numberline {4}System Implementation}{33}{section.4}%
+\contentsline {subsection}{\numberline {4.1}UI Screens}{33}{subsection.4.1}%
+\contentsline {subsubsection}{\numberline {4.1.1}Home Screen}{33}{subsubsection.4.1.1}%
+\contentsline {subsubsection}{\numberline {4.1.2}Form Detection Screen}{34}{subsubsection.4.1.2}%
+\contentsline {subsubsection}{\numberline {4.1.3}Document Upload Screen}{36}{subsubsection.4.1.3}%
+\contentsline {subsubsection}{\numberline {4.1.4}Processing Screen}{36}{subsubsection.4.1.4}%
+\contentsline {subsubsection}{\numberline {4.1.5}Results Screen}{37}{subsubsection.4.1.5}%
+\contentsline {subsubsection}{\numberline {4.1.6}Settings Screen}{39}{subsubsection.4.1.6}%
+\contentsline {subsubsection}{\numberline {4.1.7}Traditional Form Page}{41}{subsubsection.4.1.7}%
+\contentsline {subsubsection}{\numberline {4.1.8}TOON Confirmation Page}{41}{subsubsection.4.1.8}%
+\contentsline {subsubsection}{\numberline {4.1.9}Debug Page}{42}{subsubsection.4.1.9}%
+\contentsline {subsubsection}{\numberline {4.1.10}HTML Source Page}{42}{subsubsection.4.1.10}%
+\contentsline {subsection}{\numberline {4.2}Code Modules \& Responsibilities}{42}{subsection.4.2}%
+\contentsline {subsubsection}{\numberline {4.2.1}Presentation Layer Modules}{42}{subsubsection.4.2.1}%
+\contentsline {subsubsection}{\numberline {4.2.2}Controller Layer Modules}{43}{subsubsection.4.2.2}%
+\contentsline {subsubsection}{\numberline {4.2.3}Business Logic Layer Modules}{43}{subsubsection.4.2.3}%
+\contentsline {subsubsection}{\numberline {4.2.4}Data Access Layer Modules}{43}{subsubsection.4.2.4}%
+\contentsline {subsubsection}{\numberline {4.2.5}Pattern Implementation Modules}{44}{subsubsection.4.2.5}%
+\contentsline {subsection}{\numberline {4.3}File/Package Structure}{44}{subsection.4.3}%
+\contentsline {subsubsection}{\numberline {4.3.1}Key Directory Descriptions}{45}{subsubsection.4.3.1}%
+\contentsline {subsection}{\numberline {4.4}Database Schema}{45}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.1}IndexedDB Schema (Offline Queue)}{45}{subsubsection.4.4.1}%
+\contentsline {subsubsection}{\numberline {4.4.2}localStorage Schema}{46}{subsubsection.4.4.2}%
+\contentsline {subsubsection}{\numberline {4.4.3}Storage Usage}{46}{subsubsection.4.4.3}%
+\contentsline {subsubsection}{\numberline {4.4.4}Data Flow}{46}{subsubsection.4.4.4}%
+\contentsline {subsection}{\numberline {4.5}Code Repository Link}{47}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}Video Demo Link}{47}{subsection.4.6}%
+\contentsline {section}{\numberline {5}Evaluation}{48}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Evidence of Improvement}{48}{subsection.5.1}%
+\contentsline {subsubsection}{\numberline {5.1.1}Code Quality Metrics}{48}{subsubsection.5.1.1}%
+\contentsline {subsubsection}{\numberline {5.1.2}Architectural Improvements}{48}{subsubsection.5.1.2}%
+\contentsline {paragraph}{Before Refactoring (Monolithic Structure)}{48}{paragraph*.74}%
+\contentsline {paragraph}{After Refactoring (Pattern-Based Architecture)}{48}{paragraph*.75}%
+\contentsline {subsubsection}{\numberline {5.1.3}Functional Improvements}{49}{subsubsection.5.1.3}%
+\contentsline {paragraph}{Document Processing Accuracy}{49}{paragraph*.76}%
+\contentsline {paragraph}{User Experience Enhancements}{49}{paragraph*.77}%
+\contentsline {paragraph}{Offline Processing Capability}{49}{paragraph*.78}%
+\contentsline {subsubsection}{\numberline {5.1.4}Development Productivity Improvements}{49}{subsubsection.5.1.4}%
+\contentsline {subsubsection}{\numberline {5.1.5}Code Organization Improvements}{49}{subsubsection.5.1.5}%
+\contentsline {paragraph}{File Structure}{49}{paragraph*.80}%
+\contentsline {subsubsection}{\numberline {5.1.6}Security Improvements (December 2024)}{50}{subsubsection.5.1.6}%
+\contentsline {subsubsection}{\numberline {5.1.7}Performance Improvements}{50}{subsubsection.5.1.7}%
+\contentsline {subsection}{\numberline {5.2}Comparison With Non-Pattern Alternative}{50}{subsection.5.2}%
+\contentsline {subsubsection}{\numberline {5.2.1}Scenario: Adding a New Document Type}{50}{subsubsection.5.2.1}%
+\contentsline {subsubsection}{\numberline {5.2.2}Scenario: Adding Progress Tracking}{52}{subsubsection.5.2.2}%
+\contentsline {subsubsection}{\numberline {5.2.3}Scenario: Switching Storage Backend}{52}{subsubsection.5.2.3}%
+\contentsline {subsubsection}{\numberline {5.2.4}Quantitative Comparison}{53}{subsubsection.5.2.4}%
+\contentsline {subsection}{\numberline {5.3}Maintainability Assessment}{53}{subsection.5.3}%
+\contentsline {subsubsection}{\numberline {5.3.1}Code Maintainability Metrics}{53}{subsubsection.5.3.1}%
+\contentsline {subsubsection}{\numberline {5.3.2}Maintainability Dimensions}{53}{subsubsection.5.3.2}%
+\contentsline {paragraph}{Understandability}{53}{paragraph*.84}%
+\contentsline {paragraph}{Modifiability}{54}{paragraph*.85}%
+\contentsline {paragraph}{Testability}{54}{paragraph*.86}%
+\contentsline {paragraph}{Reusability}{54}{paragraph*.87}%
+\contentsline {subsubsection}{\numberline {5.3.3}Long-Term Maintainability}{54}{subsubsection.5.3.3}%
+\contentsline {paragraph}{Technical Debt Reduction}{54}{paragraph*.88}%
+\contentsline {paragraph}{Scalability Assessment}{55}{paragraph*.89}%
+\contentsline {subsubsection}{\numberline {5.3.4}Maintenance Effort Comparison}{55}{subsubsection.5.3.4}%
+\contentsline {subsubsection}{\numberline {5.3.5}Risk Assessment}{55}{subsubsection.5.3.5}%
+\contentsline {paragraph}{Pattern-Based Architecture Reduces Risks:}{55}{paragraph*.91}%
+\contentsline {subsubsection}{\numberline {5.3.6}Developer Experience}{55}{subsubsection.5.3.6}%
+\contentsline {paragraph}{Onboarding Time}{55}{paragraph*.92}%
+\contentsline {paragraph}{Development Velocity}{55}{paragraph*.93}%
+\contentsline {subsubsection}{\numberline {5.3.7}Maintainability Summary}{56}{subsubsection.5.3.7}%
+\contentsline {section}{\numberline {6}Conclusion}{57}{section.6}%
+\contentsline {subsection}{\numberline {6.1}Challenges \& Solutions}{57}{subsection.6.1}%
+\contentsline {subsubsection}{\numberline {6.1.1}Challenge 1: Integrating Multiple Patterns}{57}{subsubsection.6.1.1}%
+\contentsline {subsubsection}{\numberline {6.1.2}Challenge 2: State Pattern Conflict}{57}{subsubsection.6.1.2}%
+\contentsline {subsubsection}{\numberline {6.1.3}Challenge 3: IndexedDB Asynchronous Operations}{57}{subsubsection.6.1.3}%
+\contentsline {subsubsection}{\numberline {6.1.4}Challenge 4: Progress Event Propagation}{58}{subsubsection.6.1.4}%
+\contentsline {subsubsection}{\numberline {6.1.5}Challenge 5: Blob to File Conversion}{58}{subsubsection.6.1.5}%
+\contentsline {subsubsection}{\numberline {6.1.6}Challenge 6: React Component Integration}{58}{subsubsection.6.1.6}%
+\contentsline {subsubsection}{\numberline {6.1.7}Challenge 7: Storage Quota Management}{58}{subsubsection.6.1.7}%
+\contentsline {subsubsection}{\numberline {6.1.8}Challenge 8: Security Concerns}{59}{subsubsection.6.1.8}%
+\contentsline {subsection}{\numberline {6.2}Lessons Learned}{59}{subsection.6.2}%
+\contentsline {subsubsection}{\numberline {6.2.1}Pattern Selection Lessons}{59}{subsubsection.6.2.1}%
+\contentsline {paragraph}{Not All Patterns Are Equal}{59}{paragraph*.94}%
+\contentsline {paragraph}{Pattern Combinations Matter}{59}{paragraph*.95}%
+\contentsline {subsubsection}{\numberline {6.2.2}Implementation Lessons}{59}{subsubsection.6.2.2}%
+\contentsline {paragraph}{Start Simple, Refactor Later}{59}{paragraph*.96}%
+\contentsline {paragraph}{Documentation Is Critical}{59}{paragraph*.97}%
+\contentsline {paragraph}{Testing Patterns Separately}{59}{paragraph*.98}%
+\contentsline {subsubsection}{\numberline {6.2.3}Architectural Lessons}{60}{subsubsection.6.2.3}%
+\contentsline {paragraph}{Layering Is Essential}{60}{paragraph*.99}%
+\contentsline {paragraph}{Interfaces Over Implementations}{60}{paragraph*.100}%
+\contentsline {subsubsection}{\numberline {6.2.4}Team Collaboration Lessons}{60}{subsubsection.6.2.4}%
+\contentsline {paragraph}{Clear Responsibilities}{60}{paragraph*.101}%
+\contentsline {paragraph}{Code Reviews Focused on Patterns}{60}{paragraph*.102}%
+\contentsline {subsubsection}{\numberline {6.2.5}Performance Lessons}{60}{subsubsection.6.2.5}%
+\contentsline {paragraph}{Pattern Overhead Is Minimal}{60}{paragraph*.103}%
+\contentsline {paragraph}{Optimization Opportunities}{60}{paragraph*.104}%
+\contentsline {subsection}{\numberline {6.3}Future Improvements}{60}{subsection.6.3}%
+\contentsline {subsubsection}{\numberline {6.3.1}Short-Term Enhancements (Next 3 Months)}{61}{subsubsection.6.3.1}%
+\contentsline {paragraph}{Performance Optimizations}{61}{paragraph*.105}%
+\contentsline {paragraph}{User Experience Improvements}{61}{paragraph*.106}%
+\contentsline {paragraph}{Feature Additions}{61}{paragraph*.107}%
+\contentsline {subsubsection}{\numberline {6.3.2}Medium-Term Enhancements (3-6 Months)}{61}{subsubsection.6.3.2}%
+\contentsline {paragraph}{Advanced Offline Features}{61}{paragraph*.108}%
+\contentsline {paragraph}{Enhanced Processing}{61}{paragraph*.109}%
+\contentsline {paragraph}{Integration Features}{61}{paragraph*.110}%
+\contentsline {subsubsection}{\numberline {6.3.3}Long-Term Enhancements (6+ Months)}{62}{subsubsection.6.3.3}%
+\contentsline {paragraph}{Architecture Improvements}{62}{paragraph*.111}%
+\contentsline {paragraph}{Enterprise Features}{62}{paragraph*.112}%
+\contentsline {subsubsection}{\numberline {6.3.4}Pattern-Specific Improvements}{62}{subsubsection.6.3.4}%
+\contentsline {paragraph}{Chain of Responsibility}{62}{paragraph*.113}%
+\contentsline {paragraph}{Observer Pattern}{62}{paragraph*.114}%
+\contentsline {paragraph}{State Pattern}{62}{paragraph*.115}%
+\contentsline {subsection}{\numberline {6.4}Reflection on Design Principles}{62}{subsection.6.4}%
+\contentsline {subsubsection}{\numberline {6.4.1}SOLID Principles in Practice}{62}{subsubsection.6.4.1}%
+\contentsline {paragraph}{Single Responsibility Principle (SRP)}{62}{paragraph*.116}%
+\contentsline {paragraph}{Open/Closed Principle (OCP)}{63}{paragraph*.117}%
+\contentsline {paragraph}{Liskov Substitution Principle (LSP)}{63}{paragraph*.118}%
+\contentsline {paragraph}{Interface Segregation Principle (ISP)}{63}{paragraph*.119}%
+\contentsline {paragraph}{Dependency Inversion Principle (DIP)}{63}{paragraph*.120}%
+\contentsline {subsubsection}{\numberline {6.4.2}Design Pattern Principles}{63}{subsubsection.6.4.2}%
+\contentsline {paragraph}{Composition Over Inheritance}{63}{paragraph*.121}%
+\contentsline {paragraph}{Program to Interfaces}{64}{paragraph*.122}%
+\contentsline {paragraph}{Encapsulate What Varies}{64}{paragraph*.123}%
+\contentsline {subsubsection}{\numberline {6.4.3}Architectural Principles}{64}{subsubsection.6.4.3}%
+\contentsline {paragraph}{Separation of Concerns}{64}{paragraph*.124}%
+\contentsline {paragraph}{Don't Repeat Yourself (DRY)}{64}{paragraph*.125}%
+\contentsline {paragraph}{Keep It Simple (KISS)}{64}{paragraph*.126}%
+\contentsline {subsubsection}{\numberline {6.4.4}Practical Insights}{64}{subsubsection.6.4.4}%
+\contentsline {paragraph}{Patterns Are Tools, Not Goals}{64}{paragraph*.127}%
+\contentsline {paragraph}{Refactoring Is Continuous}{65}{paragraph*.128}%
+\contentsline {paragraph}{Documentation Matters}{65}{paragraph*.129}%
+\contentsline {paragraph}{Testing Validates Patterns}{65}{paragraph*.130}%
+\contentsline {subsubsection}{\numberline {6.4.5}Final Reflection}{65}{subsubsection.6.4.5}%
+\contentsline {section}{\numberline {A}UML Diagrams}{66}{appendix.A}%
+\contentsline {subsection}{\numberline {A.1}System Architecture Diagrams}{66}{subsection.A.1}%
+\contentsline {subsection}{\numberline {A.2}Use Case Diagrams}{66}{subsection.A.2}%
+\contentsline {subsection}{\numberline {A.3}Design Pattern UML Diagrams}{66}{subsection.A.3}%
+\contentsline {subsubsection}{\numberline {A.3.1}Architectural Patterns}{66}{subsubsection.A.3.1}%
+\contentsline {subsubsection}{\numberline {A.3.2}Behavioral Patterns}{66}{subsubsection.A.3.2}%
+\contentsline {subsubsection}{\numberline {A.3.3}Creational Patterns}{66}{subsubsection.A.3.3}%
+\contentsline {subsubsection}{\numberline {A.3.4}Structural Patterns}{66}{subsubsection.A.3.4}%
+\contentsline {subsection}{\numberline {A.4}Diagram Conventions}{67}{subsection.A.4}%
+\contentsline {section}{\numberline {B}Glossary}{67}{appendix.B}%
+\contentsline {subsection}{\numberline {B.1}Acronyms}{67}{subsection.B.1}%
+\contentsline {subsection}{\numberline {B.2}Technical Terms}{68}{subsection.B.2}%
+\contentsline {subsection}{\numberline {B.3}Project-Specific Terms}{69}{subsection.B.3}%
+\contentsline {section}{\numberline {C}References}{69}{appendix.C}%
+\contentsline {subsection}{\numberline {C.1}Books}{69}{subsection.C.1}%
+\contentsline {subsection}{\numberline {C.2}Online Documentation}{70}{subsection.C.2}%
+\contentsline {subsection}{\numberline {C.3}Design Pattern Resources}{70}{subsection.C.3}%
+\contentsline {subsection}{\numberline {C.4}Academic Papers}{70}{subsection.C.4}%
+\contentsline {subsection}{\numberline {C.5}Standards and Specifications}{70}{subsection.C.5}%
+\contentsline {subsection}{\numberline {C.6}Project Resources}{70}{subsection.C.6}%
+\contentsline {subsection}{\numberline {C.7}Additional Resources}{71}{subsection.C.7}%

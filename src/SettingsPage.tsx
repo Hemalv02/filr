@@ -142,7 +142,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     resolver: zodResolver(formSchema),
     defaultValues: {
       apiKey: localStorage.getItem("gemini_api_key") || "",
-      model: (localStorage.getItem("gemini_model") as FormValues["model"]) || "Gemini 2.0 Flash",
+      model: (localStorage.getItem("gemini_model") as FormValues["model"]) || "Gemini 2.5 Flash",
       enableOfflineMode: localStorage.getItem("enable_offline_mode") !== "false",
     },
   });

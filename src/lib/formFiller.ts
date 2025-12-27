@@ -1,3 +1,13 @@
+/**
+ * FORM FILLER - MVC Pattern Implementation  
+ * 
+ * This module handles form filling logic following established patterns:
+ * - Chain of Responsibility: Button click handling with multiple strategies
+ * - Strategy Pattern: Different text matching and container finding strategies  
+ * - Factory Pattern: Creating button click handler chains
+ * - Facade Pattern: Simplified interface for complex operations
+ */
+
 import type { FormData } from "./formExtraction";
 import type { ExtractedData } from "./gemini";
 import type { DynamicExtractedData } from "./dynamicExtraction";
@@ -392,6 +402,7 @@ function formatDateForInput(value: string, fieldLabel: string): string {
 }
 
 /**
+ * STRATEGY PATTERN: Button Container Finding Strategy
  * Enhanced button finding and clicking with multiple strategies
  */
 function findButtonsInContainer(element: HTMLButtonElement): HTMLButtonElement[] {
@@ -757,123 +768,227 @@ function forceClickButton(button: HTMLButtonElement, value: string): boolean {
 }
 
 /**
- * Enhanced button clicking with multiple fallback strategies
- * This function tries various approaches if the primary method fails
+ * CHAIN OF RESPONSIBILITY PATTERN: Button Click Handler Interface
  */
-function clickButtonWithFallbacks(element: HTMLButtonElement | null, value: string, fieldLabel: string = ''): boolean {
-  const strategies = [
-    // Strategy 1: Use the enhanced clickButtonByValue if we have an element
-    () => {
-      if (element) {
-        console.log(`🎯 Strategy 1: Enhanced click on provided element`);
-        return clickButtonByValue(element, value);
+interface ButtonClickHandler {
+  setNext(handler: ButtonClickHandler): ButtonClickHandler;
+  handle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean;
+}
+
+/**
+ * CHAIN OF RESPONSIBILITY PATTERN: Abstract Button Click Handler
+ */
+abstract class AbstractButtonClickHandler implements ButtonClickHandler {
+  private nextHandler: ButtonClickHandler | null = null;
+
+  setNext(handler: ButtonClickHandler): ButtonClickHandler {
+    this.nextHandler = handler;
+    return handler;
+  }
+
+  handle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    if (this.canHandle(element, value, fieldLabel)) {
+      console.log(`[BUTTON_HANDLER] ${this.constructor.name}: Attempting to handle button click`);
+      try {
+        const result = this.doHandle(element, value, fieldLabel);
+        if (result) {
+          console.log(`[BUTTON_HANDLER] ${this.constructor.name}: Successfully handled button click`);
+          return true;
+        }
+        console.log(`[BUTTON_HANDLER] ${this.constructor.name}: Could not handle, passing to next handler`);
+      } catch (error) {
+        console.warn(`[BUTTON_HANDLER] ${this.constructor.name}: Handler failed with error, passing to next handler:`, error);
       }
-      return false;
-    },
-    
-    // Strategy 2: Search globally by text content
-    () => {
-      console.log(`🔍 Strategy 2: Global button search by text`);
-      const foundButton = findButtonByTextGlobal(value);
-      if (foundButton) {
-        return clickButtonByValue(foundButton, value);
-      }
-      return false;
-    },
-    
-    // Strategy 3: Search by label association
-    () => {
-      console.log(`🏷️ Strategy 3: Search by label association`);
-      if (!fieldLabel) return false;
-      
-      const labels = document.querySelectorAll('label');
-      for (const label of labels) {
-        const labelText = (label.textContent || '').toLowerCase();
-        if (labelText.includes(fieldLabel.toLowerCase())) {
-          const container = label.closest('.form-group, .button-group, fieldset') || label.parentElement;
-          if (container) {
-            const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
-            for (const btn of buttons) {
-              if (btn instanceof HTMLButtonElement) {
-                const texts = extractButtonTexts(btn);
-                if (matchButtonText(texts, value)) {
-                  return clickButtonByValue(btn, value);
-                }
+    }
+
+    if (this.nextHandler) {
+      return this.nextHandler.handle(element, value, fieldLabel);
+    }
+
+    console.log(`[BUTTON_HANDLER] ${this.constructor.name}: End of chain reached, no handler could process the request`);
+    return false;
+  }
+
+  protected abstract canHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean;
+  protected abstract doHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean;
+}
+
+/**
+ * CHAIN OF RESPONSIBILITY: Direct Element Click Handler
+ */
+class DirectElementClickHandler extends AbstractButtonClickHandler {
+  protected canHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    return element !== null;
+  }
+
+  protected doHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    if (element) {
+      return clickButtonByValue(element, value);
+    }
+    return false;
+  }
+}
+
+/**
+ * CHAIN OF RESPONSIBILITY: Global Button Search Handler  
+ */
+class GlobalButtonSearchHandler extends AbstractButtonClickHandler {
+  protected canHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    return true; // Can always attempt global search
+  }
+
+  protected doHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    const foundButton = findButtonByTextGlobal(value);
+    if (foundButton) {
+      return clickButtonByValue(foundButton, value);
+    }
+    return false;
+  }
+}
+
+/**
+ * CHAIN OF RESPONSIBILITY: Label Association Handler
+ */
+class LabelAssociationHandler extends AbstractButtonClickHandler {
+  protected canHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    return fieldLabel !== undefined && fieldLabel !== '';
+  }
+
+  protected doHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    const labels = document.querySelectorAll('label');
+    for (const label of labels) {
+      const labelText = (label.textContent || '').toLowerCase();
+      if (labelText.includes(fieldLabel.toLowerCase())) {
+        const container = label.closest('.form-group, .button-group, fieldset') || label.parentElement;
+        if (container) {
+          const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+          for (const btn of buttons) {
+            if (btn instanceof HTMLButtonElement) {
+              const texts = extractButtonTexts(btn);
+              if (matchButtonText(texts, value)) {
+                return clickButtonByValue(btn, value);
               }
             }
           }
         }
       }
-      return false;
-    },
-    
-    // Strategy 4: CSS selector based search
-    () => {
-      console.log(`🎨 Strategy 4: CSS selector based search`);
-      const selectors = [
-        `button[value*="${value}"]`,
-        `button[data-value*="${value}"]`,
-        `button[aria-label*="${value}"]`,
-        `button[title*="${value}"]`
-      ];
-      
-      for (const selector of selectors) {
-        try {
-          const buttons = document.querySelectorAll(selector);
-          for (const btn of buttons) {
-            if (btn instanceof HTMLButtonElement) {
-              return forceClickButton(btn, value);
-            }
-          }
-        } catch (e) {
-          // Invalid selector, continue
-        }
-      }
-      return false;
-    },
-    
-    // Strategy 5: Partial text matching with relaxed criteria
-    () => {
-      console.log(`🔤 Strategy 5: Relaxed text matching`);
-      const allButtons = document.querySelectorAll('button');
-      const normalizedValue = value.toLowerCase().trim();
-      
-      for (const btn of allButtons) {
-        if (btn instanceof HTMLButtonElement && btn.type !== 'submit' && btn.type !== 'reset') {
-          const allText = [
-            btn.textContent || '',
-            btn.innerText || '',
-            btn.value || '',
-            btn.getAttribute('aria-label') || '',
-            btn.getAttribute('title') || ''
-          ].join(' ').toLowerCase();
-          
-          // Very relaxed matching - any partial match
-          if (allText.includes(normalizedValue) || normalizedValue.includes(allText.trim())) {
-            if (allText.trim().length > 0) { // Avoid empty text matches
-              return forceClickButton(btn, value);
-            }
-          }
-        }
-      }
-      return false;
     }
-  ];
-  
-  // Try each strategy in order
-  for (let i = 0; i < strategies.length; i++) {
-    try {
-      if (strategies[i]()) {
-        console.log(`✅ Button clicking succeeded with strategy ${i + 1}`);
-        return true;
-      }
-    } catch (error) {
-      console.warn(`⚠️ Strategy ${i + 1} failed:`, error);
-    }
+    return false;
   }
-  
-  console.error(`❌ All button clicking strategies failed for value: "${value}"`);
-  return false;
+}
+
+/**
+ * CHAIN OF RESPONSIBILITY: CSS Selector Handler
+ */
+class CSSelectorHandler extends AbstractButtonClickHandler {
+  protected canHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    return value.length > 0;
+  }
+
+  protected doHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    const selectors = [
+      `button[value*="${value}"]`,
+      `button[data-value*="${value}"]`,
+      `button[aria-label*="${value}"]`,
+      `button[title*="${value}"]`
+    ];
+    
+    for (const selector of selectors) {
+      try {
+        const buttons = document.querySelectorAll(selector);
+        for (const btn of buttons) {
+          if (btn instanceof HTMLButtonElement) {
+            return forceClickButton(btn, value);
+          }
+        }
+      } catch (e) {
+        // Invalid selector, continue
+      }
+    }
+    return false;
+  }
+}
+
+/**
+ * CHAIN OF RESPONSIBILITY: Relaxed Text Matching Handler (Last Resort)
+ */
+class RelaxedTextMatchingHandler extends AbstractButtonClickHandler {
+  protected canHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    return value.length >= 2; // Only for reasonable length values
+  }
+
+  protected doHandle(element: HTMLButtonElement | null, value: string, fieldLabel: string): boolean {
+    const allButtons = document.querySelectorAll('button');
+    const normalizedValue = value.toLowerCase().trim();
+    
+    for (const btn of allButtons) {
+      if (btn instanceof HTMLButtonElement && btn.type !== 'submit' && btn.type !== 'reset') {
+        const allText = [
+          btn.textContent || '',
+          btn.innerText || '',
+          btn.value || '',
+          btn.getAttribute('aria-label') || '',
+          btn.getAttribute('title') || ''
+        ].join(' ').toLowerCase();
+        
+        if (allText.includes(normalizedValue) || normalizedValue.includes(allText.trim())) {
+          if (allText.trim().length > 0) {
+            return forceClickButton(btn, value);
+          }
+        }
+      }
+    }
+    return false;
+  }
+}
+
+/**
+ * FACTORY PATTERN: Button Click Handler Factory
+ */
+class ButtonClickHandlerFactory {
+  static createButtonClickChain(): ButtonClickHandler {
+    const directElement = new DirectElementClickHandler();
+    const globalSearch = new GlobalButtonSearchHandler();
+    const labelAssociation = new LabelAssociationHandler();
+    const cssSelector = new CSSelectorHandler();
+    const relaxedMatch = new RelaxedTextMatchingHandler();
+
+    // CHAIN OF RESPONSIBILITY: Build the chain
+    directElement
+      .setNext(globalSearch)
+      .setNext(labelAssociation)
+      .setNext(cssSelector)
+      .setNext(relaxedMatch);
+
+    console.log(`[BUTTON_CHAIN] Created button click handler chain: DirectElement -> GlobalSearch -> LabelAssociation -> CSSSelector -> RelaxedMatch`);
+    
+    return directElement;
+  }
+}
+
+/**
+ * FACADE PATTERN: Simplified interface for button clicking with multiple fallback strategies
+ * Uses Chain of Responsibility pattern internally
+ */
+function clickButtonWithFallbacks(element: HTMLButtonElement | null, value: string, fieldLabel: string = ''): boolean {
+  try {
+    console.log(`🔘 [BUTTON_FACADE] Starting button click chain for value: "${value}"`);
+    
+    // FACTORY PATTERN: Create the handler chain
+    const handlerChain = ButtonClickHandlerFactory.createButtonClickChain();
+    
+    // CHAIN OF RESPONSIBILITY: Process through the chain
+    const result = handlerChain.handle(element, value, fieldLabel);
+    
+    if (!result) {
+      console.error(`❌ [BUTTON_FACADE] All button clicking handlers failed for value: "${value}"`);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`❌ [BUTTON_FACADE] Button clicking chain failed with error:`, error);
+    return false;
+  }
 }
 
 /**
@@ -1232,7 +1347,8 @@ function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSel
 }
 
 /**
- * Auto-fill form fields with extracted data (works with both static and dynamic extraction)
+ * MVC PATTERN: Auto-fill form fields with extracted data (works with both static and dynamic extraction)
+ * USES: Chain of Responsibility for button clicking, Strategy for text matching
  */
 export async function autoFillForm(
   formData: FormData,
@@ -1501,7 +1617,8 @@ export async function autoFillForm(
 }
 
 /**
- * Execute auto-fill in the current tab
+ * MVC PATTERN: Execute auto-fill in the current tab  
+ * USES: Chain of Responsibility for button clicking, Factory pattern for handler creation
  */
 export async function executeAutoFill(
   formData: FormData,

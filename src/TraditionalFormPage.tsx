@@ -2,13 +2,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Upload, Sparkles, Loader2, Download, FileUp } from "lucide-react";
+import { ArrowLeft, Save, Upload, Sparkles, Loader2, Download, FileUp, Eye, EyeOff } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
 import type { ExtractedData } from "./lib/gemini";
 import { processDocuments } from "./lib/gemini";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
 import { ToastContainer } from "./components/ToastContainer";
+import { encryptToonContent, decryptToonContent, isEncrypted, getPasswordStrength } from "./lib/encryption";
 
 interface TraditionalFormPageProps {
   onBack: () => void;
@@ -97,6 +98,19 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     status: string;
   } | null>(null);
 
+  // Password-protected download states
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [downloadPassword, setDownloadPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isEncrypting, setIsEncrypting] = useState(false);
+
+  // Password-protected import states
+  const [showDecryptModal, setShowDecryptModal] = useState(false);
+  const [decryptPassword, setDecryptPassword] = useState("");
+  const [showDecryptPassword, setShowDecryptPassword] = useState(false);
+  const [encryptedFileContent, setEncryptedFileContent] = useState<string | null>(null);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+
   const handleFieldChange = (field: keyof ExtractedData, value: string) => {
     setData({ ...data, [field]: value });
   };
@@ -172,6 +186,16 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
 
     try {
       const content = await file.text();
+
+      // Check if file is encrypted
+      if (isEncrypted(content)) {
+        // Store encrypted content and show password prompt
+        setEncryptedFileContent(content);
+        setShowDecryptModal(true);
+        return;
+      }
+
+      // File is not encrypted, parse normally
       const parsedData = parseTOON(content);
 
       // Check if we got any data
@@ -336,80 +360,196 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
       return;
     }
 
-    // Convert to TOON format
-    let toonString = "";
+    // Show password modal for encryption
+    setShowPasswordModal(true);
+  };
 
-    // Group fields by category for better organization
-    const categories = {
-      birth_certificate: [
-        'name_english', 'name_bengali', 'father_name_english', 'father_name_bengali',
-        'mother_name_english', 'mother_name_bengali', 'date_of_birth', 'birth_day',
-        'birth_month', 'birth_year', 'place_of_birth', 'birth_registration_number',
-        'sex', 'permanent_address'
-      ],
-      address: ['current_address', 'utility_account_number'],
-      education: [
-        'education_board', 'ssc_roll_number', 'ssc_registration_number',
-        'ssc_passing_year', 'institution_name'
-      ],
-      nid: ['parent_nid_number', 'parent_name', 'relation'],
-      other_ids: ['passport_number', 'tin_number', 'driving_license_number']
-    };
-
-    // Helper function to escape TOON values
-    const escapeTOON = (value: string): string => {
-      // Escape commas, newlines, and backslashes
-      if (value.includes(',') || value.includes('\n') || value.includes('\\')) {
-        return value.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-      }
-      return value;
-    };
-
-    // Process each category
-    Object.entries(categories).forEach(([categoryName, fields]) => {
-      const categoryData = fields
-        .filter(field => filteredData[field as keyof ExtractedData])
-        .map(field => ({
-          key: field,
-          value: String(filteredData[field as keyof ExtractedData])
-        }));
-
-      if (categoryData.length > 0) {
-        // Use TOON tabular format for arrays of objects
-        const fieldNames = categoryData.map(d => d.key).join(',');
-        const values = categoryData.map(d => escapeTOON(d.value)).join(',');
-
-        toonString += `${categoryName}[${categoryData.length}]{${fieldNames}}:\n`;
-        toonString += `  ${values}\n`;
-      }
-    });
-
-    // If no categorized data, create a simple object notation
-    if (toonString === "") {
-      Object.entries(filteredData).forEach(([key, value]) => {
-        toonString += `${key}: ${escapeTOON(String(value))}\n`;
-      });
+  const handlePasswordDownload = () => {
+    if (!downloadPassword || downloadPassword.trim() === "") {
+      alert("Please enter a password to protect your data.");
+      return;
     }
 
-    // Create blob and download link
-    const blob = new Blob([toonString], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    setIsEncrypting(true);
 
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
-    link.download = `form-data-${timestamp}.toon`;
-    link.href = url;
+    // Small delay to show encryption state
+    setTimeout(() => {
+      try {
+        // Filter out empty fields
+        const filteredData = Object.entries(data).reduce((acc, [key, value]) => {
+          if (value && value.trim() !== "") {
+            acc[key as keyof ExtractedData] = value;
+          }
+          return acc;
+        }, {} as Partial<ExtractedData>);
 
-    // Trigger download
-    document.body.appendChild(link);
-    link.click();
+        // Convert to TOON format
+        let toonString = "";
 
-    // Cleanup
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+        // Group fields by category for better organization
+        const categories = {
+          birth_certificate: [
+            'name_english', 'name_bengali', 'father_name_english', 'father_name_bengali',
+            'mother_name_english', 'mother_name_bengali', 'date_of_birth', 'birth_day',
+            'birth_month', 'birth_year', 'place_of_birth', 'birth_registration_number',
+            'sex', 'permanent_address'
+          ],
+          address: ['current_address', 'utility_account_number'],
+          education: [
+            'education_board', 'ssc_roll_number', 'ssc_registration_number',
+            'ssc_passing_year', 'institution_name'
+          ],
+          nid: ['parent_nid_number', 'parent_name', 'relation'],
+          other_ids: ['passport_number', 'tin_number', 'driving_license_number']
+        };
 
-    alert("TOON file downloaded successfully!");
+        // Helper function to escape TOON values
+        const escapeTOON = (value: string): string => {
+          // Escape commas, newlines, and backslashes
+          if (value.includes(',') || value.includes('\n') || value.includes('\\')) {
+            return value.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+          }
+          return value;
+        };
+
+        // Process each category
+        Object.entries(categories).forEach(([categoryName, fields]) => {
+          const categoryData = fields
+            .filter(field => filteredData[field as keyof ExtractedData])
+            .map(field => ({
+              key: field,
+              value: String(filteredData[field as keyof ExtractedData])
+            }));
+
+          if (categoryData.length > 0) {
+            // Use TOON tabular format for arrays of objects
+            const fieldNames = categoryData.map(d => d.key).join(',');
+            const values = categoryData.map(d => escapeTOON(d.value)).join(',');
+
+            toonString += `${categoryName}[${categoryData.length}]{${fieldNames}}:\n`;
+            toonString += `  ${values}\n`;
+          }
+        });
+
+        // If no categorized data, create a simple object notation
+        if (toonString === "") {
+          Object.entries(filteredData).forEach(([key, value]) => {
+            toonString += `${key}: ${escapeTOON(String(value))}\n`;
+          });
+        }
+
+        // Encrypt the TOON content with password
+        const encryptedContent = encryptToonContent(toonString, downloadPassword);
+
+        // Create blob and download link
+        const blob = new Blob([encryptedContent], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+        link.download = `form-data-${timestamp}.toon`;
+        link.href = url;
+
+        // Trigger download
+        document.body.appendChild(link);
+        link.click();
+
+        // Cleanup
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        // Show success notification
+        const notifications = OfflineNotifications.getInstance();
+        notifications.showToast({
+          type: 'success',
+          title: 'Download successful',
+          message: 'Your encrypted TOON file has been downloaded.',
+          duration: 3000,
+        });
+
+        // Close modal and reset
+        setShowPasswordModal(false);
+        setDownloadPassword("");
+        setShowPassword(false);
+      } catch (error) {
+        console.error('Failed to encrypt and download:', error);
+        alert('Failed to encrypt and download file. Please try again.');
+      } finally {
+        setIsEncrypting(false);
+      }
+    }, 300);
+  };
+
+  const handleDecryptAndImport = () => {
+    if (!decryptPassword || decryptPassword.trim() === "") {
+      alert("Please enter the password to decrypt the file.");
+      return;
+    }
+
+    if (!encryptedFileContent) {
+      alert("No encrypted file to decrypt.");
+      return;
+    }
+
+    setIsDecrypting(true);
+
+    // Small delay to show decrypting state
+    setTimeout(() => {
+      try {
+        // Decrypt the content
+        const decryptedContent = decryptToonContent(encryptedFileContent, decryptPassword);
+
+        // Parse the decrypted TOON content
+        const parsedData = parseTOON(decryptedContent);
+
+        // Check if we got any data
+        const hasData = Object.values(parsedData).some(value => value && value !== "");
+
+        if (!hasData) {
+          alert("No valid data found in the decrypted TOON file.");
+          setShowDecryptModal(false);
+          setEncryptedFileContent(null);
+          setDecryptPassword("");
+          setShowDecryptPassword(false);
+          return;
+        }
+
+        // Close decrypt modal
+        setShowDecryptModal(false);
+        setEncryptedFileContent(null);
+        setDecryptPassword("");
+        setShowDecryptPassword(false);
+
+        // If onToonImport callback is provided, use the new confirmation flow
+        if (onToonImport) {
+          onToonImport(parsedData, data);
+        } else {
+          // Fallback: merge directly and show in results (old behavior)
+          const mergedData: Partial<ExtractedData> = { ...data };
+          Object.entries(parsedData).forEach(([key, value]) => {
+            if (value && value !== "" && value !== "undefined" && value !== "null") {
+              mergedData[key as keyof ExtractedData] = value;
+            }
+          });
+          onProcessComplete(mergedData as ExtractedData);
+        }
+
+        // Show success notification
+        const notifications = OfflineNotifications.getInstance();
+        notifications.showToast({
+          type: 'success',
+          title: 'Import successful',
+          message: 'Your encrypted TOON file has been imported.',
+          duration: 3000,
+        });
+      } catch (error) {
+        console.error('Failed to decrypt TOON file:', error);
+        alert('Failed to decrypt file. Please check your password and try again.');
+      } finally {
+        setIsDecrypting(false);
+      }
+    }, 300);
   };
 
   const renderField = (label: string, field: keyof ExtractedData, placeholder?: string) => {
@@ -475,6 +615,186 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
                   <p className="text-xs text-center text-muted-foreground">
                     Please wait while we extract information from your documents...
                   </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Password Modal for Download */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle className="text-lg">Protect Your TOON File</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Enter a password to encrypt your data. You'll need this password to import the file later.
+                </p>
+
+                {/* Password Input */}
+                <div className="space-y-2">
+                  <Label htmlFor="download-password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="download-password"
+                      type={showPassword ? "text" : "password"}
+                      value={downloadPassword}
+                      onChange={(e) => setDownloadPassword(e.target.value)}
+                      placeholder="Enter a strong password"
+                      className="pr-10"
+                      disabled={isEncrypting}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={isEncrypting}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Password Strength Indicator */}
+                {downloadPassword && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Password strength:</span>
+                      <span className={
+                        getPasswordStrength(downloadPassword) === "strong" ? "text-green-600" :
+                          getPasswordStrength(downloadPassword) === "medium" ? "text-yellow-600" :
+                            "text-red-600"
+                      }>
+                        {getPasswordStrength(downloadPassword).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-1.5">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${getPasswordStrength(downloadPassword) === "strong" ? "bg-green-600 w-full" :
+                            getPasswordStrength(downloadPassword) === "medium" ? "bg-yellow-600 w-2/3" :
+                              "bg-red-600 w-1/3"
+                          }`}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowPasswordModal(false);
+                      setDownloadPassword("");
+                      setShowPassword(false);
+                    }}
+                    disabled={isEncrypting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handlePasswordDownload}
+                    disabled={isEncrypting || !downloadPassword}
+                  >
+                    {isEncrypting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Encrypting...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Decrypt Modal for Import */}
+        {showDecryptModal && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle className="text-lg">Decrypt TOON File</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  This file is password-protected. Enter the password to decrypt and import the data.
+                </p>
+
+                {/* Password Input */}
+                <div className="space-y-2">
+                  <Label htmlFor="decrypt-password">Password</Label>
+                  <div className="relative">
+                    <Input
+                      id="decrypt-password"
+                      type={showDecryptPassword ? "text" : "password"}
+                      value={decryptPassword}
+                      onChange={(e) => setDecryptPassword(e.target.value)}
+                      placeholder="Enter the password"
+                      className="pr-10"
+                      disabled={isDecrypting}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && decryptPassword) {
+                          handleDecryptAndImport();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowDecryptPassword(!showDecryptPassword)}
+                      disabled={isDecrypting}
+                    >
+                      {showDecryptPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowDecryptModal(false);
+                      setEncryptedFileContent(null);
+                      setDecryptPassword("");
+                      setShowDecryptPassword(false);
+                    }}
+                    disabled={isDecrypting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={handleDecryptAndImport}
+                    disabled={isDecrypting || !decryptPassword}
+                  >
+                    {isDecrypting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Decrypting...
+                      </>
+                    ) : (
+                      <>
+                        <FileUp className="w-4 h-4 mr-2" />
+                        Import
+                      </>
+                    )}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

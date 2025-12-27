@@ -819,3 +819,4 @@ The Filr extension architecture is built on solid design principles:
 
 The architecture supports both static (predefined) and dynamic (form-detected) extraction modes, providing flexibility for various government forms while maintaining backwards compatibility.
 
+

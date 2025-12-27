@@ -392,54 +392,488 @@ function formatDateForInput(value: string, fieldLabel: string): string {
 }
 
 /**
+ * Enhanced button finding and clicking with multiple strategies
+ */
+function findButtonsInContainer(element: HTMLButtonElement): HTMLButtonElement[] {
+  const selectors = [
+    // Primary containers
+    '.selectContainer, .form-group, .form-row, .button-group, .radio_button_set',
+    // Generic containers with button classes
+    '[class*="button"], [class*="select"], [class*="choice"], [class*="option"]',
+    // Bootstrap and common framework containers
+    '.btn-group, .btn-toolbar, .form-check, .form-radio',
+    // Custom containers
+    '[role="group"], [role="radiogroup"], fieldset'
+  ];
+
+  for (const selector of selectors) {
+    const container = element.closest(selector);
+    if (container && container !== document.body) {
+      const buttons = Array.from(container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])'))
+        .filter(btn => btn instanceof HTMLButtonElement) as HTMLButtonElement[];
+      if (buttons.length > 1) return buttons; // Only return if there are multiple buttons (group)
+    }
+  }
+
+  // Fallback: check parent element
+  const parent = element.parentElement;
+  if (parent) {
+    const siblingButtons = Array.from(parent.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])'))
+      .filter(btn => btn instanceof HTMLButtonElement) as HTMLButtonElement[];
+    if (siblingButtons.length > 1) return siblingButtons;
+  }
+
+  return [element]; // Return just the single button if no group found
+}
+
+/**
+ * Extract all possible text representations from a button
+ */
+function extractButtonTexts(btn: HTMLButtonElement): string[] {
+  const texts: string[] = [];
+  
+  // Primary text sources
+  const textContent = (btn.textContent || '').trim();
+  const innerText = (btn.innerText || '').trim();
+  const value = (btn.value || '').trim();
+  const ariaLabel = (btn.getAttribute('aria-label') || '').trim();
+  const title = (btn.getAttribute('title') || '').trim();
+  const dataValue = (btn.getAttribute('data-value') || '').trim();
+  
+  // Add non-empty unique texts
+  [textContent, innerText, value, ariaLabel, title, dataValue].forEach(text => {
+    if (text && !texts.includes(text)) {
+      texts.push(text);
+    }
+  });
+
+  // Check nested elements for text
+  const nestedElements = btn.querySelectorAll('span, div, i, .text, .label, [class*="text"], [class*="label"]');
+  nestedElements.forEach(elem => {
+    const elemText = (elem.textContent || '').trim();
+    if (elemText && !texts.includes(elemText)) {
+      texts.push(elemText);
+    }
+  });
+
+  return texts;
+}
+
+/**
+ * Advanced text matching with various strategies (prioritized)
+ */
+function matchButtonText(buttonTexts: string[], targetValue: string): boolean {
+  const normalizedTarget = targetValue.toLowerCase().trim();
+  
+  // PRIORITY 1: Exact match (highest priority)
+  for (const text of buttonTexts) {
+    const normalizedText = text.toLowerCase().trim();
+    if (normalizedText === normalizedTarget) return true;
+  }
+  
+  // PRIORITY 2: Special keyword matching (prevents gender/yes-no confusion)
+  for (const text of buttonTexts) {
+    const normalizedText = text.toLowerCase().trim();
+    if (matchSpecialKeywords(normalizedText, normalizedTarget)) return true;
+  }
+  
+  // PRIORITY 3: Word boundary matches (prevents partial word confusion)
+  for (const text of buttonTexts) {
+    const normalizedText = text.toLowerCase().trim();
+    // Check if target is a complete word in the button text
+    const wordBoundaryRegex = new RegExp(`\\b${normalizedTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    if (wordBoundaryRegex.test(normalizedText)) return true;
+  }
+  
+  // PRIORITY 4: Contains match (both directions, but be careful)
+  for (const text of buttonTexts) {
+    const normalizedText = text.toLowerCase().trim();
+    
+    // Only allow contains match if it's not a problematic case
+    if (normalizedText.includes(normalizedTarget) || normalizedTarget.includes(normalizedText)) {
+      // Prevent "male" matching "female" and similar issues
+      if (isProblematicMatch(normalizedText, normalizedTarget)) {
+        continue;
+      }
+      return true;
+    }
+  }
+  
+  // PRIORITY 5: Fuzzy matching for single words (lowest priority)
+  for (const text of buttonTexts) {
+    const normalizedText = text.toLowerCase().trim();
+    if (normalizedTarget.length >= 3 && normalizedText.length >= 3) {
+      if (fuzzyMatch(normalizedText, normalizedTarget)) return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Check if a match would be problematic (e.g., "male" matching "female")
+ */
+function isProblematicMatch(buttonText: string, targetValue: string): boolean {
+  const problematicPairs = [
+    ['male', 'female'], ['female', 'male'],
+    ['yes', 'no'], ['no', 'yes'],
+    ['true', 'false'], ['false', 'true'],
+    ['accept', 'reject'], ['reject', 'accept'],
+    ['agree', 'disagree'], ['disagree', 'agree']
+  ];
+  
+  for (const [word1, word2] of problematicPairs) {
+    if ((buttonText.includes(word1) && targetValue === word2) ||
+        (buttonText.includes(word2) && targetValue === word1)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Handle special keyword mappings (YES/NO, True/False, Male/Female, etc.)
+ */
+function matchSpecialKeywords(buttonText: string, targetValue: string): boolean {
+  const yesKeywords = ['yes', 'y', 'true', '1', 'ok', 'confirm', 'agree', 'accept'];
+  const noKeywords = ['no', 'n', 'false', '0', 'cancel', 'deny', 'reject', 'decline'];
+  
+  // Gender-specific matching (most important for the current issue)
+  const maleKeywords = ['male', 'm', 'পুরুষ', 'man'];
+  const femaleKeywords = ['female', 'f', 'মহিলা', 'woman'];
+  
+  const isTargetYes = yesKeywords.includes(targetValue);
+  const isTargetNo = noKeywords.includes(targetValue);
+  const isTargetMale = maleKeywords.includes(targetValue);
+  const isTargetFemale = femaleKeywords.includes(targetValue);
+  
+  const isButtonYes = yesKeywords.some(keyword => buttonText.includes(keyword));
+  const isButtonNo = noKeywords.some(keyword => buttonText.includes(keyword));
+  const isButtonMale = maleKeywords.some(keyword => buttonText.includes(keyword));
+  const isButtonFemale = femaleKeywords.some(keyword => buttonText.includes(keyword));
+  
+  // Exact keyword category matching
+  if (isTargetYes && isButtonYes) return true;
+  if (isTargetNo && isButtonNo) return true;
+  if (isTargetMale && isButtonMale && !isButtonFemale) return true; // Make sure it's not "female" 
+  if (isTargetFemale && isButtonFemale && !isButtonMale) return true; // Make sure it's not "male"
+  
+  return false;
+}
+
+/**
+ * Simple fuzzy matching for typos and variations
+ */
+function fuzzyMatch(text1: string, text2: string): boolean {
+  // Calculate Levenshtein distance
+  const distance = levenshteinDistance(text1, text2);
+  const maxLength = Math.max(text1.length, text2.length);
+  const threshold = 0.8; // 80% similarity
+  
+  return (maxLength - distance) / maxLength >= threshold;
+}
+
+/**
+ * Calculate Levenshtein distance between two strings
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+  
+  for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+  for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= str2.length; j++) {
+    for (let i = 1; i <= str1.length; i++) {
+      const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,     // deletion
+        matrix[j - 1][i] + 1,     // insertion
+        matrix[j - 1][i - 1] + indicator // substitution
+      );
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
+
+/**
+ * Trigger comprehensive click events for maximum compatibility
+ */
+function triggerButtonClick(button: HTMLButtonElement): void {
+  // Focus the button first
+  button.focus();
+  
+  // Get button coordinates for realistic mouse events
+  const rect = button.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  
+  // Create mouse events with realistic coordinates
+  const mouseEventOptions = {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: centerX,
+    clientY: centerY,
+    button: 0,
+  };
+  
+  // Full mouse interaction sequence
+  button.dispatchEvent(new MouseEvent('mousedown', { ...mouseEventOptions, buttons: 1 }));
+  
+  // Small delay to simulate real interaction
+  setTimeout(() => {
+    button.dispatchEvent(new MouseEvent('mouseup', { ...mouseEventOptions, buttons: 0 }));
+    button.dispatchEvent(new MouseEvent('click', { ...mouseEventOptions, buttons: 0 }));
+    
+    // Framework-specific events
+    button.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    button.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    
+    // Custom events that some frameworks listen for
+    button.dispatchEvent(new CustomEvent('buttonClick', { bubbles: true, detail: { value: button.value || button.textContent } }));
+  }, 10);
+}
+
+/**
  * Generalized button click - finds and clicks button by text content
  * Works with button groups (radio-style buttons, YES/NO buttons, etc.)
  */
 function clickButtonByValue(element: HTMLButtonElement, value: string): boolean {
   try {
     const normalizedValue = value.toLowerCase().trim();
+    console.log(`🔘 Starting button click search for value: "${value}"`);
 
-    // Helper: Extract visible text from button
-    const getButtonText = (btn: HTMLButtonElement): string => {
-      return (btn.textContent || btn.innerText || btn.value || btn.getAttribute('aria-label') || '').toLowerCase().trim();
-    };
+    // Find all buttons in the group/container
+    const buttons = findButtonsInContainer(element);
+    console.log(`  📋 Found ${buttons.length} buttons to search through`);
 
-    // Find container with all buttons in the group
-    const container = element.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="select"]') || element.parentElement;
-
-    if (!container) {
-      console.warn('✗ No container found for button');
-      return false;
-    }
-
-    // Get all buttons in the group
-    const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
-    console.log(`  Searching ${buttons.length} buttons for value: "${value}"`);
-
-    // Try to find matching button
+    // Try to find matching button using advanced matching
     for (const button of buttons) {
-      if (!(button instanceof HTMLButtonElement)) continue;
+      const buttonTexts = extractButtonTexts(button);
+      console.log(`  🔍 Checking button with texts: [${buttonTexts.join(', ')}]`);
 
-      const buttonText = getButtonText(button);
-      console.log(`  Checking button: "${buttonText}"`);
-
-      // Match: exact match, contains, or partial match
-      if (buttonText === normalizedValue ||
-          buttonText.includes(normalizedValue) ||
-          normalizedValue.includes(buttonText)) {
-        console.log(`  ✓ Matched! Clicking button`);
+      if (matchButtonText(buttonTexts, normalizedValue)) {
+        console.log(`  ✅ Match found! Triggering click on button`);
+        
+        // Use native click first
         button.click();
-        button.dispatchEvent(new Event('change', { bubbles: true }));
+        
+        // Then trigger comprehensive events for framework compatibility
+        triggerButtonClick(button);
+        
+        console.log(`✅ Successfully clicked button with value: "${value}"`);
         return true;
       }
     }
 
-    console.warn(`✗ No matching button found for: "${value}"`);
+    // Fallback: Search by data attributes or class names
+    console.log(`  🔄 Trying fallback search by attributes...`);
+    for (const button of buttons) {
+      const datasets = Object.values(button.dataset);
+      const classNames = button.className.toLowerCase();
+      
+      if (datasets.some(data => data.toLowerCase().includes(normalizedValue)) ||
+          classNames.includes(normalizedValue)) {
+        console.log(`  ✅ Fallback match found via attributes`);
+        button.click();
+        triggerButtonClick(button);
+        return true;
+      }
+    }
+
+    console.warn(`❌ No matching button found for value: "${value}"`);
+    console.warn(`  Available buttons:`, buttons.map(btn => ({
+      text: btn.textContent,
+      value: btn.value,
+      id: btn.id,
+      className: btn.className
+    })));
     return false;
   } catch (error) {
-    console.error('Error clicking button:', error);
+    console.error('❌ Error in clickButtonByValue:', error);
     return false;
   }
+}
+
+/**
+ * Alternative button finder by text content across the entire document
+ * Use this when element-based search fails
+ */
+function findButtonByTextGlobal(targetValue: string): HTMLButtonElement | null {
+  const normalizedTarget = targetValue.toLowerCase().trim();
+  const allButtons = document.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+  
+  for (const button of allButtons) {
+    if (!(button instanceof HTMLButtonElement)) continue;
+    
+    const texts = extractButtonTexts(button);
+    if (matchButtonText(texts, normalizedTarget)) {
+      return button;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Force click button using multiple DOM methods
+ * Sometimes frameworks need specific event sequences
+ */
+function forceClickButton(button: HTMLButtonElement, value: string): boolean {
+  try {
+    console.log(`🔧 Force clicking button with multiple methods...`);
+    
+    // Method 1: Standard click
+    button.click();
+    
+    // Method 2: Dispatch mouse events
+    triggerButtonClick(button);
+    
+    // Method 3: Trigger form events
+    const form = button.closest('form');
+    if (form) {
+      form.dispatchEvent(new Event('input', { bubbles: true }));
+      form.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    
+    // Method 4: Try triggering on parent container
+    const container = button.closest('.form-group, .button-group, [class*="button"]');
+    if (container) {
+      container.dispatchEvent(new Event('click', { bubbles: true }));
+    }
+    
+    // Method 5: Set data attributes that frameworks might listen to
+    button.setAttribute('data-clicked', 'true');
+    button.setAttribute('data-value-selected', value);
+    
+    console.log(`✅ Force click completed for button`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Force click failed:`, error);
+    return false;
+  }
+}
+
+/**
+ * Enhanced button clicking with multiple fallback strategies
+ * This function tries various approaches if the primary method fails
+ */
+function clickButtonWithFallbacks(element: HTMLButtonElement | null, value: string, fieldLabel: string = ''): boolean {
+  const strategies = [
+    // Strategy 1: Use the enhanced clickButtonByValue if we have an element
+    () => {
+      if (element) {
+        console.log(`🎯 Strategy 1: Enhanced click on provided element`);
+        return clickButtonByValue(element, value);
+      }
+      return false;
+    },
+    
+    // Strategy 2: Search globally by text content
+    () => {
+      console.log(`🔍 Strategy 2: Global button search by text`);
+      const foundButton = findButtonByTextGlobal(value);
+      if (foundButton) {
+        return clickButtonByValue(foundButton, value);
+      }
+      return false;
+    },
+    
+    // Strategy 3: Search by label association
+    () => {
+      console.log(`🏷️ Strategy 3: Search by label association`);
+      if (!fieldLabel) return false;
+      
+      const labels = document.querySelectorAll('label');
+      for (const label of labels) {
+        const labelText = (label.textContent || '').toLowerCase();
+        if (labelText.includes(fieldLabel.toLowerCase())) {
+          const container = label.closest('.form-group, .button-group, fieldset') || label.parentElement;
+          if (container) {
+            const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
+            for (const btn of buttons) {
+              if (btn instanceof HTMLButtonElement) {
+                const texts = extractButtonTexts(btn);
+                if (matchButtonText(texts, value)) {
+                  return clickButtonByValue(btn, value);
+                }
+              }
+            }
+          }
+        }
+      }
+      return false;
+    },
+    
+    // Strategy 4: CSS selector based search
+    () => {
+      console.log(`🎨 Strategy 4: CSS selector based search`);
+      const selectors = [
+        `button[value*="${value}"]`,
+        `button[data-value*="${value}"]`,
+        `button[aria-label*="${value}"]`,
+        `button[title*="${value}"]`
+      ];
+      
+      for (const selector of selectors) {
+        try {
+          const buttons = document.querySelectorAll(selector);
+          for (const btn of buttons) {
+            if (btn instanceof HTMLButtonElement) {
+              return forceClickButton(btn, value);
+            }
+          }
+        } catch (e) {
+          // Invalid selector, continue
+        }
+      }
+      return false;
+    },
+    
+    // Strategy 5: Partial text matching with relaxed criteria
+    () => {
+      console.log(`🔤 Strategy 5: Relaxed text matching`);
+      const allButtons = document.querySelectorAll('button');
+      const normalizedValue = value.toLowerCase().trim();
+      
+      for (const btn of allButtons) {
+        if (btn instanceof HTMLButtonElement && btn.type !== 'submit' && btn.type !== 'reset') {
+          const allText = [
+            btn.textContent || '',
+            btn.innerText || '',
+            btn.value || '',
+            btn.getAttribute('aria-label') || '',
+            btn.getAttribute('title') || ''
+          ].join(' ').toLowerCase();
+          
+          // Very relaxed matching - any partial match
+          if (allText.includes(normalizedValue) || normalizedValue.includes(allText.trim())) {
+            if (allText.trim().length > 0) { // Avoid empty text matches
+              return forceClickButton(btn, value);
+            }
+          }
+        }
+      }
+      return false;
+    }
+  ];
+  
+  // Try each strategy in order
+  for (let i = 0; i < strategies.length; i++) {
+    try {
+      if (strategies[i]()) {
+        console.log(`✅ Button clicking succeeded with strategy ${i + 1}`);
+        return true;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Strategy ${i + 1} failed:`, error);
+    }
+  }
+  
+  console.error(`❌ All button clicking strategies failed for value: "${value}"`);
+  return false;
 }
 
 /**
@@ -447,9 +881,9 @@ function clickButtonByValue(element: HTMLButtonElement, value: string): boolean 
  */
 function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement, value: string, fieldLabel: string = ''): boolean {
   try {
-    // Special handling for button elements - use generalized click function
+    // Special handling for button elements - use enhanced click function with fallbacks
     if (element instanceof HTMLButtonElement) {
-      return clickButtonByValue(element, value);
+      return clickButtonWithFallbacks(element, value, fieldLabel);
     }
 
     // OLD button code - keeping but disabled
@@ -1028,6 +1462,16 @@ export async function autoFillForm(
           success = setNgSelectValue(element, value, fieldLabel);
         }
       }
+      // Fallback: If no element found but might be a button field, try global button search
+      else if (!element && !ngSelect && 
+               (fieldLabel.toLowerCase().includes('button') || 
+                fieldLabel.toLowerCase().includes('select') || 
+                fieldLabel.toLowerCase().includes('choice') ||
+                fieldName.toLowerCase().includes('button') ||
+                fieldId.toLowerCase().includes('button'))) {
+        console.log(`  🔄 No element found, trying global button search for: "${value}"`);
+        success = clickButtonWithFallbacks(null, value, fieldLabel);
+      }
 
       if (success) {
         const msg = `✓ ${fieldLabel} [${fieldName}]: "${value}" (${matchMethod})`;
@@ -1356,50 +1800,234 @@ export async function executeAutoFill(
           return value;
         }
 
-        // Generalized button click function
+        // Enhanced button click function with multiple strategies
         function clickButtonByValue(element, value) {
           try {
             const normalizedValue = value.toLowerCase().trim();
+            console.log('🔘 Starting button click search for value: "' + value + '"');
 
-            // Helper: Extract visible text from button
-            function getButtonText(btn) {
-              return (btn.textContent || btn.innerText || btn.value || btn.getAttribute('aria-label') || '').toLowerCase().trim();
+            // Find buttons in container using multiple selectors
+            function findButtonsInContainer(element) {
+              const selectors = [
+                '.selectContainer, .form-group, .form-row, .button-group, .radio_button_set',
+                '[class*="button"], [class*="select"], [class*="choice"], [class*="option"]',
+                '.btn-group, .btn-toolbar, .form-check, .form-radio',
+                '[role="group"], [role="radiogroup"], fieldset'
+              ];
+
+              for (const selector of selectors) {
+                const container = element.closest(selector);
+                if (container && container !== document.body) {
+                  const buttons = Array.from(container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])'))
+                    .filter(btn => btn instanceof HTMLButtonElement);
+                  if (buttons.length > 1) return buttons;
+                }
+              }
+
+              const parent = element.parentElement;
+              if (parent) {
+                const siblingButtons = Array.from(parent.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])'))
+                  .filter(btn => btn instanceof HTMLButtonElement);
+                if (siblingButtons.length > 1) return siblingButtons;
+              }
+
+              return [element];
             }
 
-            // Find container with all buttons in the group
-            const container = element.closest('.selectContainer, .form-group, .form-row, .button-group, .radio_button_set, [class*="button"], [class*="select"]') || element.parentElement;
+            // Extract all text sources from button
+            function extractButtonTexts(btn) {
+              const texts = [];
+              const textContent = (btn.textContent || '').trim();
+              const innerText = (btn.innerText || '').trim();
+              const value = (btn.value || '').trim();
+              const ariaLabel = (btn.getAttribute('aria-label') || '').trim();
+              const title = (btn.getAttribute('title') || '').trim();
+              const dataValue = (btn.getAttribute('data-value') || '').trim();
+              
+              [textContent, innerText, value, ariaLabel, title, dataValue].forEach(text => {
+                if (text && !texts.includes(text)) {
+                  texts.push(text);
+                }
+              });
 
-            if (!container) {
-              console.warn('✗ No container found for button');
+              const nestedElements = btn.querySelectorAll('span, div, i, .text, .label, [class*="text"], [class*="label"]');
+              nestedElements.forEach(elem => {
+                const elemText = (elem.textContent || '').trim();
+                if (elemText && !texts.includes(elemText)) {
+                  texts.push(elemText);
+                }
+              });
+
+              return texts;
+            }
+
+            // Special keyword matching with gender-specific logic
+            function matchSpecialKeywords(buttonText, targetValue) {
+              const yesKeywords = ['yes', 'y', 'true', '1', 'ok', 'confirm', 'agree', 'accept'];
+              const noKeywords = ['no', 'n', 'false', '0', 'cancel', 'deny', 'reject', 'decline'];
+              const maleKeywords = ['male', 'm', 'পুরুষ', 'man'];
+              const femaleKeywords = ['female', 'f', 'মহিলা', 'woman'];
+              
+              const isTargetYes = yesKeywords.includes(targetValue);
+              const isTargetNo = noKeywords.includes(targetValue);
+              const isTargetMale = maleKeywords.includes(targetValue);
+              const isTargetFemale = femaleKeywords.includes(targetValue);
+              
+              const isButtonYes = yesKeywords.some(keyword => buttonText.includes(keyword));
+              const isButtonNo = noKeywords.some(keyword => buttonText.includes(keyword));
+              const isButtonMale = maleKeywords.some(keyword => buttonText.includes(keyword));
+              const isButtonFemale = femaleKeywords.some(keyword => buttonText.includes(keyword));
+              
+              if (isTargetYes && isButtonYes) return true;
+              if (isTargetNo && isButtonNo) return true;
+              if (isTargetMale && isButtonMale && !isButtonFemale) return true;
+              if (isTargetFemale && isButtonFemale && !isButtonMale) return true;
+              
               return false;
             }
 
-            // Get all buttons in the group
-            const buttons = container.querySelectorAll('button[type="button"], button:not([type="submit"]):not([type="reset"])');
-            console.log('  Searching ' + buttons.length + ' buttons for value: "' + value + '"');
+            // Check for problematic matches
+            function isProblematicMatch(buttonText, targetValue) {
+              const problematicPairs = [
+                ['male', 'female'], ['female', 'male'],
+                ['yes', 'no'], ['no', 'yes'],
+                ['true', 'false'], ['false', 'true']
+              ];
+              
+              for (const pair of problematicPairs) {
+                if ((buttonText.includes(pair[0]) && targetValue === pair[1]) ||
+                    (buttonText.includes(pair[1]) && targetValue === pair[0])) {
+                  return true;
+                }
+              }
+              return false;
+            }
 
-            // Try to find matching button
+            // Enhanced button text matching with priorities
+            function matchButtonText(buttonTexts, targetValue) {
+              const normalizedTarget = targetValue.toLowerCase().trim();
+              
+              // PRIORITY 1: Exact match
+              for (const text of buttonTexts) {
+                const normalizedText = text.toLowerCase().trim();
+                if (normalizedText === normalizedTarget) return true;
+              }
+              
+              // PRIORITY 2: Special keyword matching
+              for (const text of buttonTexts) {
+                const normalizedText = text.toLowerCase().trim();
+                if (matchSpecialKeywords(normalizedText, normalizedTarget)) return true;
+              }
+              
+              // PRIORITY 3: Word boundary matches
+              for (const text of buttonTexts) {
+                const normalizedText = text.toLowerCase().trim();
+                try {
+                  const wordBoundaryRegex = new RegExp('\\\\b' + normalizedTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\\\$&') + '\\\\b');
+                  if (wordBoundaryRegex.test(normalizedText)) return true;
+                } catch (e) {
+                  // Invalid regex, skip
+                }
+              }
+              
+              // PRIORITY 4: Contains match (with safety checks)
+              for (const text of buttonTexts) {
+                const normalizedText = text.toLowerCase().trim();
+                if (normalizedText.includes(normalizedTarget) || normalizedTarget.includes(normalizedText)) {
+                  if (!isProblematicMatch(normalizedText, normalizedTarget)) {
+                    return true;
+                  }
+                }
+              }
+              
+              return false;
+            }
+
+            // Trigger comprehensive click events
+            function triggerButtonClick(button) {
+              button.focus();
+              
+              const rect = button.getBoundingClientRect();
+              const centerX = rect.left + rect.width / 2;
+              const centerY = rect.top + rect.height / 2;
+              
+              const mouseEventOptions = {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY,
+                button: 0,
+              };
+              
+              button.dispatchEvent(new MouseEvent('mousedown', Object.assign({}, mouseEventOptions, { buttons: 1 })));
+              
+              setTimeout(() => {
+                button.dispatchEvent(new MouseEvent('mouseup', Object.assign({}, mouseEventOptions, { buttons: 0 })));
+                button.dispatchEvent(new MouseEvent('click', Object.assign({}, mouseEventOptions, { buttons: 0 })));
+                button.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                button.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+              }, 10);
+            }
+
+            // Main logic
+            const buttons = findButtonsInContainer(element);
+            console.log('  📋 Found ' + buttons.length + ' buttons to search through');
+
+            // Try to find matching button using advanced matching
             for (const button of buttons) {
-              if (!(button instanceof HTMLButtonElement)) continue;
+              const buttonTexts = extractButtonTexts(button);
+              console.log('  🔍 Checking button with texts: [' + buttonTexts.join(', ') + '] for target: "' + normalizedValue + '"');
+              
+              // Debug each matching strategy
+              for (const text of buttonTexts) {
+                const normalizedText = text.toLowerCase().trim();
+                console.log('    - Text: "' + normalizedText + '" vs Target: "' + normalizedValue + '"');
+                
+                // Check exact match
+                if (normalizedText === normalizedValue) {
+                  console.log('      → Exact match found!');
+                }
+                
+                // Check special keyword match
+                if (matchSpecialKeywords(normalizedText, normalizedValue)) {
+                  console.log('      → Special keyword match found!');
+                }
+                
+                // Check if problematic
+                if (isProblematicMatch(normalizedText, normalizedValue)) {
+                  console.log('      → ⚠️  Problematic match detected, skipping');
+                }
+              }
 
-              const buttonText = getButtonText(button);
-              console.log('  Checking button: "' + buttonText + '"');
-
-              // Match: exact match, contains, or partial match
-              if (buttonText === normalizedValue ||
-                  buttonText.includes(normalizedValue) ||
-                  normalizedValue.includes(buttonText)) {
-                console.log('  ✓ Matched! Clicking button');
+              if (matchButtonText(buttonTexts, normalizedValue)) {
+                console.log('  ✅ Match found! Triggering click on button');
                 button.click();
-                button.dispatchEvent(new Event('change', { bubbles: true }));
+                triggerButtonClick(button);
+                console.log('✅ Successfully clicked button with value: "' + value + '"');
                 return true;
               }
             }
 
-            console.warn('✗ No matching button found for: "' + value + '"');
+            // Fallback: Search by data attributes or class names
+            console.log('  🔄 Trying fallback search by attributes...');
+            for (const button of buttons) {
+              const datasets = Object.values(button.dataset || {});
+              const classNames = button.className.toLowerCase();
+              
+              if (datasets.some(data => data.toLowerCase().includes(normalizedValue)) ||
+                  classNames.includes(normalizedValue)) {
+                console.log('  ✅ Fallback match found via attributes');
+                button.click();
+                triggerButtonClick(button);
+                return true;
+              }
+            }
+
+            console.warn('❌ No matching button found for value: "' + value + '"');
             return false;
           } catch (error) {
-            console.error('Error clicking button:', error);
+            console.error('❌ Error in clickButtonByValue:', error);
             return false;
           }
         }
@@ -1937,6 +2565,15 @@ export async function executeAutoFill(
               success = setNgSelectValue(ngSelect, value, fieldLabel);
             } else if (element) {
               success = setInputValue(element, value, fieldLabel);
+            } else if (!element && !ngSelect && 
+                       (fieldLabel.toLowerCase().includes('button') || 
+                        fieldLabel.toLowerCase().includes('select') || 
+                        fieldLabel.toLowerCase().includes('choice') ||
+                        fieldName.toLowerCase().includes('button') ||
+                        fieldId.toLowerCase().includes('button'))) {
+              console.log('  🔄 No element found, trying global button search for: "' + value + '"');
+              // Use the enhanced button clicking function
+              success = clickButtonByValue(null, value);
             }
 
             if (success) {

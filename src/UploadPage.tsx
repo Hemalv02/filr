@@ -23,13 +23,14 @@ import { cn } from "@/lib/utils";
 
 // MVC PATTERN: Import controller
 import { DocumentController } from "./controllers/DocumentController";
+import { OfflineAwareDocumentController, isQueuedResponse } from "./controllers/OfflineAwareDocumentController";
+import type { DocumentUploadModel } from "./models/DocumentModel";
 
 // Offline Processing - Import Components
 import { NetworkStatusBanner } from "./components/NetworkStatusBanner";
 import { ToastContainer } from "./components/ToastContainer";
 import { QueueStatus } from "./components/QueueStatus";
 import { NetworkStatusManager } from "./lib/offline/NetworkStatusManager";
-import SimpleOfflineQueue from "./lib/offline/SimpleOfflineQueue";
 import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
 
 type DocumentType = "birthCertificate" | "utilityBill" | "educationCertificate" | "nidCard" | "passport" | "other";
@@ -311,17 +312,58 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
     setIsProcessing(true);
 
     try {
-      const queue = SimpleOfflineQueue();
-      const jobId = await queue.queueDocuments(pendingOfflineFiles, detectedFormData || null);
+      // Get API key and model
+      const apiKey = localStorage.getItem("gemini_api_key") || "";
+      const model = localStorage.getItem("selected_model") || "gemini-2.5-flash";
 
-      setProcessingError("");
-      setIsProcessing(false);
-      showToast('success', 'Documents Queued', `${pendingOfflineFiles.length} document(s) saved locally. They will be processed when you're back online.`);
-      setPendingOfflineFiles([]);
+      // Prepare documents in the DocumentUploadModel format
+      const documents: DocumentUploadModel[] = pendingOfflineFiles.map((file, index) => {
+        const displayDoc = displayDocuments[index];
+        return {
+          type: (displayDoc?.type as any) || "other",
+          file,
+          required: displayDoc?.required || false,
+          label: displayDoc?.label || "Other Document",
+          description: displayDoc?.description || "",
+        };
+      });
+
+      console.log(`[UploadPage] Queueing ${documents.length} documents via OfflineAwareDocumentController`);
+
+      // Use OfflineAwareDocumentController which will automatically queue to LocalDocumentStore
+      const result = await OfflineAwareDocumentController.processDocuments(
+        documents,
+        apiKey,
+        model,
+        undefined // No progress callback needed for offline queuing
+      );
+
+      // Check if documents were queued (should always be true when offline)
+      if (isQueuedResponse(result)) {
+        console.log('[UploadPage] Documents queued successfully:', result);
+        setProcessingError("");
+        setIsProcessing(false);
+
+        const jobCount = result.jobIds?.length || 0;
+        showToast(
+          'success',
+          'Documents Queued',
+          `${pendingOfflineFiles.length} document(s) saved locally (${jobCount} job${jobCount !== 1 ? 's' : ''}). They will be processed when you're back online.`
+        );
+        setPendingOfflineFiles([]);
+      } else {
+        // Unexpected: processed online instead of queued
+        console.warn('[UploadPage] Documents were processed online instead of being queued');
+        setProcessingError("");
+        setIsProcessing(false);
+        showToast('success', 'Documents Processed', 'Documents were processed successfully.');
+        setPendingOfflineFiles([]);
+      }
     } catch (queueError) {
       console.error('[UploadPage] Failed to queue documents:', queueError);
       setProcessingError("Failed to queue documents for offline processing. Please try again.");
       setIsProcessing(false);
+      showToast('error', 'Queue Failed', 'Failed to queue documents for offline processing.');
     }
   };
 

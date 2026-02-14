@@ -20,6 +20,9 @@ import { StateManager, type PageType, type StateContext } from "./lib/state/AppS
 import { NavigationController, SettingsController } from "./controllers/DocumentController";
 import type { DocumentUploadModel } from "./models/DocumentModel";
 
+// Secure storage for API keys
+import { ApiKeyManager } from "./lib/secureStorage";
+
 // Offline Processing - Import Components
 import { ToastContainer } from "./components/ToastContainer";
 import { OfflineStatusIndicator } from "./components/OfflineStatusIndicator";
@@ -105,10 +108,13 @@ export default function App() {
     setStateContext({ ...context });
   }, [stateManager]);
 
-  // Initialize offline processing subsystem
+  // Initialize secure storage and offline processing subsystem
   useEffect(() => {
     const initOffline = async () => {
       try {
+        // Initialize API key manager (decrypt/migrate stored key)
+        await ApiKeyManager.getInstance().initialize();
+
         await initializeOfflineProcessing();
         console.log('[App] Offline processing initialized');
 
@@ -157,7 +163,7 @@ export default function App() {
 
   const handleDetectForm = () => {
     // Check if API key exists
-    const apiKey = localStorage.getItem("gemini_api_key");
+    const apiKey = ApiKeyManager.getInstance().getApiKey();
 
     if (!apiKey) {
       // Show toast notification instead of alert

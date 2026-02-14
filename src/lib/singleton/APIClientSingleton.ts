@@ -6,6 +6,7 @@
  */
 
 import { GoogleGenAI } from "@google/genai";
+import { ApiKeyManager } from "../secureStorage";
 
 /**
  * Singleton API Client Manager
@@ -122,7 +123,14 @@ export class SettingsSingleton {
    */
   private loadFromStorage(): void {
     try {
-      const keys = ["gemini_api_key", "gemini_model", "theme"];
+      // Load API key from secure storage (in-memory cache)
+      const apiKey = ApiKeyManager.getInstance().getApiKey();
+      if (apiKey) {
+        this.settings.set("gemini_api_key", apiKey);
+      }
+
+      // Load non-sensitive settings from localStorage
+      const keys = ["gemini_model", "theme"];
       keys.forEach(key => {
         const value = localStorage.getItem(key);
         if (value) {
@@ -148,7 +156,11 @@ export class SettingsSingleton {
   public set(key: string, value: any): void {
     this.settings.set(key, value);
     try {
-      localStorage.setItem(key, value);
+      if (key === "gemini_api_key") {
+        ApiKeyManager.getInstance().setApiKey(value);
+      } else {
+        localStorage.setItem(key, value);
+      }
       console.log(`[SINGLETON] Setting saved: ${key}`);
     } catch (error) {
       console.error(`[SINGLETON] Failed to save setting ${key}:`, error);

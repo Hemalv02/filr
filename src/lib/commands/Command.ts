@@ -8,6 +8,7 @@
 import type { ExtractedData } from "../gemini";
 import type { FormData } from "../formExtraction";
 import type { DocumentUploadModel } from "../models/DocumentModel";
+import { ApiKeyManager } from "../secureStorage";
 
 /**
  * Base Command interface
@@ -218,11 +219,11 @@ export class SaveSettingsCommand extends BaseCommand {
     console.log(`[COMMAND] Executing: ${this.getDescription()}`);
 
     // Save previous values for undo
-    this.previousApiKey = localStorage.getItem("gemini_api_key");
+    this.previousApiKey = ApiKeyManager.getInstance().getApiKey();
     this.previousModel = localStorage.getItem("gemini_model");
 
-    // Save new values
-    localStorage.setItem("gemini_api_key", this.apiKey);
+    // Save new values (async encryption handled in background)
+    ApiKeyManager.getInstance().setApiKey(this.apiKey);
     localStorage.setItem("gemini_model", this.model);
 
     this.executed = true;
@@ -238,7 +239,7 @@ export class SaveSettingsCommand extends BaseCommand {
     console.log(`[COMMAND] Undoing: ${this.getDescription()}`);
 
     if (this.previousApiKey !== null) {
-      localStorage.setItem("gemini_api_key", this.previousApiKey);
+      ApiKeyManager.getInstance().setApiKey(this.previousApiKey);
     }
     if (this.previousModel !== null) {
       localStorage.setItem("gemini_model", this.previousModel);

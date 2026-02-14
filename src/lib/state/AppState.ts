@@ -8,6 +8,7 @@
 import type { ExtractedData } from "../gemini";
 import type { FormData, SourceDocumentList } from "../formExtraction";
 import type { ProgressEvent } from "../observers/ProcessingObserver";
+import { ApiKeyManager } from "../secureStorage";
 
 // Valid page types in the application
 export type PageType =
@@ -119,7 +120,7 @@ export class FormDetectionState extends BaseState {
 
   validate(context: StateContext): boolean {
     // Check if API key exists
-    const apiKey = localStorage.getItem("gemini_api_key");
+    const apiKey = ApiKeyManager.getInstance().getApiKey();
     if (!apiKey) {
       context.error = "API key not configured";
       return false;

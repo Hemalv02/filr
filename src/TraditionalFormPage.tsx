@@ -10,6 +10,7 @@ import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
 import { ToastContainer } from "./components/ToastContainer";
 import { encryptToonContent, decryptToonContent, isEncrypted, getPasswordStrength } from "./lib/encryption";
+import { ApiKeyManager } from "./lib/secureStorage";
 
 interface TraditionalFormPageProps {
   onBack: () => void;
@@ -226,7 +227,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const apiKey = localStorage.getItem("gemini_api_key");
+    const apiKey = ApiKeyManager.getInstance().getApiKey();
     const model = localStorage.getItem("gemini_model") || "Gemini 2.0 Flash";
 
     if (!apiKey) {
@@ -373,7 +374,7 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     setIsEncrypting(true);
 
     // Small delay to show encryption state
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         // Filter out empty fields
         const filteredData = Object.entries(data).reduce((acc, [key, value]) => {
@@ -438,8 +439,8 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
           });
         }
 
-        // Encrypt the TOON content with password
-        const encryptedContent = encryptToonContent(toonString, downloadPassword);
+        // Encrypt the TOON content with AES-256-GCM
+        const encryptedContent = await encryptToonContent(toonString, downloadPassword);
 
         // Create blob and download link
         const blob = new Blob([encryptedContent], { type: "text/plain" });
@@ -495,10 +496,10 @@ export default function TraditionalFormPage({ onBack, onSave, onProcessComplete,
     setIsDecrypting(true);
 
     // Small delay to show decrypting state
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        // Decrypt the content
-        const decryptedContent = decryptToonContent(encryptedFileContent, decryptPassword);
+        // Decrypt the content (supports both AES-GCM V2 and legacy XOR V1)
+        const decryptedContent = await decryptToonContent(encryptedFileContent, decryptPassword);
 
         // Parse the decrypted TOON content
         const parsedData = parseTOON(decryptedContent);

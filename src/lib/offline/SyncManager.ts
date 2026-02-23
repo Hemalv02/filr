@@ -11,6 +11,7 @@
  */
 
 import { DocumentController } from '../../controllers/DocumentController';
+import { ApiKeyManager } from '../secureStorage';
 import type { ProcessingResultModel } from '../../models/DocumentModel';
 import {
   DocumentJobOriginator,
@@ -295,7 +296,7 @@ export class SyncManager {
     while (attempts <= this.config.maxRetries && !success) {
       try {
         // Get API key and model from localStorage
-        const apiKey = localStorage.getItem('gemini_api_key');
+        const apiKey = ApiKeyManager.getInstance().getApiKey();
         const model = job.metadata?.apiModel || localStorage.getItem('gemini_model') || 'Gemini 2.0 Flash';
 
         if (!apiKey) {

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { detectAndExtractForm, detectRequiredDocuments, type FormData, type SourceDocumentList } from "./lib/formExtraction";
 import { FormDetectionSteps } from "./components/FormDetectionSteps";
 import { cn } from "@/lib/utils";
+import { ApiKeyManager } from "./lib/secureStorage";
 import {
   getCachedFormData,
   isCachedFormCurrent,
@@ -107,7 +108,7 @@ export default function FormDetectionPage({ onBack, onContinueToUpload }: FormDe
   const detectFormAndDocuments = async () => {
     try {
       // Get API key from localStorage
-      const apiKey = localStorage.getItem("gemini_api_key");
+      const apiKey = ApiKeyManager.getInstance().getApiKey();
 
       if (!apiKey) {
         setError("API key not found. Please configure your API key in settings.");

@@ -18,6 +18,7 @@ import { processDocuments, type ExtractedData } from "./lib/gemini";
 import { processDynamicDocuments, type DynamicExtractedData } from "./lib/dynamicExtraction";
 import type { ProgressEvent } from "./lib/observers/ProcessingObserver";
 import type { FormData, SourceDocumentList } from "./lib/formExtraction";
+import { ApiKeyManager } from "./lib/secureStorage";
 import { getPageAccessibilityTree } from "./lib/formExtraction";
 import { cn } from "@/lib/utils";
 
@@ -169,7 +170,7 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
     }
 
     // Check for API key and model
-    const apiKey = localStorage.getItem("gemini_api_key");
+    const apiKey = ApiKeyManager.getInstance().getApiKey();
     const model = localStorage.getItem("gemini_model");
 
     if (!apiKey) {
@@ -313,7 +314,7 @@ export default function UploadPage({ documents, setDocuments, onClearAll, onBack
 
     try {
       // Get API key and model
-      const apiKey = localStorage.getItem("gemini_api_key") || "";
+      const apiKey = ApiKeyManager.getInstance().getApiKey() || "";
       const model = localStorage.getItem("selected_model") || "gemini-2.5-flash";
 
       // Prepare documents in the DocumentUploadModel format

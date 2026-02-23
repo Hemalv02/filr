@@ -49,6 +49,7 @@ import { OfflineNotifications } from "./lib/offline/OfflineNotifications";
 import { SettingsController } from "./controllers/DocumentController";
 import { GoogleGenAI } from "@google/genai";
 import { ToastContainer } from "./components/ToastContainer";
+import { ApiKeyManager } from "./lib/secureStorage";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -141,7 +142,7 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      apiKey: localStorage.getItem("gemini_api_key") || "",
+      apiKey: ApiKeyManager.getInstance().getApiKey() || "",
       model: (localStorage.getItem("gemini_model") as FormValues["model"]) || "Gemini 2.5 Flash",
       enableOfflineMode: localStorage.getItem("enable_offline_mode") !== "false",
     },
@@ -216,8 +217,8 @@ export default function SettingsPage({ onBack }: SettingsPageProps) {
     }
   };
 
-  const onSubmit = (values: FormValues) => {
-    localStorage.setItem("gemini_api_key", values.apiKey.trim());
+  const onSubmit = async (values: FormValues) => {
+    await ApiKeyManager.getInstance().setApiKey(values.apiKey.trim());
     localStorage.setItem("gemini_model", values.model);
     localStorage.setItem("enable_offline_mode", String(values.enableOfflineMode ?? true));
     setIsSaved(true);

@@ -13,6 +13,7 @@
 import type { ExtractedData } from "../lib/gemini";
 import type { FormData, SourceDocumentList } from "../lib/formExtraction";
 import { ProcessorChain, type ChainOptions } from "../lib/processors/ProcessorChain";
+import { ApiKeyManager } from "../lib/secureStorage";
 import { detectAndExtractForm } from "../lib/formExtraction";
 import { processDynamicDocuments } from "../lib/dynamicExtraction";
 import { executeAutoFill } from "../lib/formFiller";
@@ -317,7 +318,7 @@ export class NavigationController {
 
     // Form detection requires API key
     if (to === "formdetection") {
-      const apiKey = localStorage.getItem("gemini_api_key");
+      const apiKey = ApiKeyManager.getInstance().getApiKey();
       if (!apiKey) {
         return {
           allowed: false,
